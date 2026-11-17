@@ -1,0 +1,9 @@
+{
+  "name": "AntdUI",
+  "version": "2.4.19",
+  "targetFramework": "net48",
+  "license": "Apache-2.0",
+  "source": "https://www.nuget.org/packages/AntdUI/2.4.19",
+  "packageSha256": "82B1EBC2C91409EAD4BECF9E3674454E4E0DF6F2AB21600BE9CE02F5B5576820",
+  "distribution": "App sidecar DLL; embedded in standalone setup/uninstaller; license included."
+}

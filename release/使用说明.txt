@@ -1,0 +1,32 @@
+窝窝斯坐牢小助手 1.4.0
+
+安装 / 更新：运行 AslainAssistant.Setup.exe。
+安装器默认创建桌面快捷方式，并可选择安装后启动助手。
+已有游戏目录、插件预设、自动更新和开机自启设置会保留。
+更新时会自动关闭旧助手；模组安装中会等待完成，不中断安装。
+同一 Windows 用户仅运行一个助手，重复启动会唤起已有窗口。
+
+界面操作：
+- 左侧选择国服或外服客户端，也可添加自己的客户端。
+- 左下角“外观”切换浅色 / 深色，重启后保留。
+- 点击“更新概览、客户端设置、插件配置、运行日志”切换页面。
+- Ctrl + 1 / 2 / 3 / 4 可快速切换上述页面，重启后保留最后打开的页面。
+- 自动检查频率、游戏目录在“客户端设置”；配置导入导出在“插件配置”。
+- “客户端设置”中的“助手更新”可控制软件自身更新，默认定期检查。
+- 离线时保留现有模组和配置，15 分钟后重试，检测到网络恢复也会重试。
+- 安装异常时，在“查看处理方案”中查看官方下载链接和对应客户端的缓存目录。
+- 关闭窗口后在系统托盘继续运行；完整退出请用托盘菜单“退出助手”。
+
+便携运行：AslainAssistant.exe 和 AntdUI.dll 必须放在同一目录。
+仅分发安装包时，AslainAssistant.Setup.exe 已内嵌所需组件库。
+组件库：AntdUI 2.4.19，Apache-2.0；许可见 AntdUI.LICENSE.txt。
+
+用户数据：%LOCALAPPDATA%\WoWS-Aslain-Assistant
+客户端配置在 profiles 子目录；界面偏好在 ui.json。
+完整教程：https://github.com/REREREGO/wows-aslain-assistant
+
+开发验证：
+powershell -File build.ps1 -OutputDirectory build
+build\AslainAssistant.Tests.exe
+build\AslainAssistant.UiTests.exe
+业务测试使用模拟下载和安装器，界面测试使用独立配置，不执行真实模组安装。
