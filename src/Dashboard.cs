@@ -107,6 +107,12 @@ namespace AslainAssistant
             if(selfUpdate.Busy || shutdownForUpdate || confirmingDelete) cancel.Enabled=false;
             assistantAutomatic.Enabled=selfUpdate.Allowed && !busy;
             assistantUpdateStatus.Text=selfUpdate.Status;
+            assistantVersionStatus.Text="GitHub 已发布："+selfUpdate.PublishedVersion+"\n"+selfUpdate.VersionStatus;
+            DateTimeOffset checkedAt;
+            assistantCheckedAt.Text=DateTimeOffset.TryParse(selfUpdate.Settings.LastCheck,out checkedAt) ? "上次成功检查："+checkedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm") : "尚未成功检查";
+            checkAssistantVersion.Enabled=selfUpdate.Allowed && !busy && booted;
+            installAssistantUpdate.Visible=selfUpdate.UpdateAvailable;
+            installAssistantUpdate.Enabled=selfUpdate.Allowed && selfUpdate.UpdateAvailable && !busy && booted;
             foreach (var pair in tiles)
             {
                 var s = pair.Key.Settings;
@@ -362,12 +368,24 @@ namespace AslainAssistant
             var due = engines.Where(x => x.Settings.AutoUpdate && x.NextCheck <= DateTimeOffset.Now).OrderBy(x => x.NextCheck).FirstOrDefault();
             if (due != null) await due.Run(true, false, false);
             else if(selfUpdate.Settings.Enabled && selfUpdate.NextCheck<=DateTimeOffset.Now) await CheckAssistant(false);
+            else if(!selfUpdate.Settings.Enabled && selfUpdate.NextVersionCheck<=DateTimeOffset.Now) await CheckAssistantVersion();
             RefreshUi();
         }
         async Task CheckAssistant(bool manual)
         {
             if(!booted || shutdownForUpdate || confirmingDelete || engines.Any(x=>x.Busy) || selfUpdate.Busy) return;
             await selfUpdate.Run(manual);
+        }
+        async Task CheckAssistantVersion()
+        {
+            if(!booted || shutdownForUpdate || confirmingDelete || engines.Any(x=>x.Busy) || selfUpdate.Busy) return;
+            await selfUpdate.CheckVersion();
+        }
+        void OpenAssistantVersion()
+        {
+            pages.SelectedIndex=1; UiTheme.LayoutVisible(pages);
+            pages.Pages[1].Controls.OfType<AntdUI.StackPanel>().First().ScrollControlIntoView(assistantCard);
+            var task=CheckAssistantVersion();
         }
         byte HandleInstanceCommand(byte command)
         {

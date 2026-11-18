@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -28,6 +29,24 @@ namespace AslainAssistant
         public string Sha256 { get; set; }
         public long Size { get; set; }
         public string PublishedUtc { get; set; }
+        // Releases through v1.4.4 predate the user's reset to the 1.0.x series.
+        // A larger number from that history must never replace a current build.
+        [System.Web.Script.Serialization.ScriptIgnore]
+        public bool IsHistorical
+        {
+            get { return PublicationTime <= new DateTimeOffset(2026,11,18,8,16,9,TimeSpan.Zero); }
+        }
+        [System.Web.Script.Serialization.ScriptIgnore]
+        public DateTimeOffset PublicationTime
+        {
+            get
+            {
+                DateTimeOffset value;
+                if(!DateTimeOffset.TryParse(PublishedUtc,CultureInfo.InvariantCulture,DateTimeStyles.None,out value))
+                    throw new InvalidDataException("助手发布信息缺少有效的发布时间，请稍后重试。");
+                return value;
+            }
+        }
         public static Version NormalizeVersion(string text)
         {
             Version version;
@@ -48,6 +67,7 @@ namespace AslainAssistant
             var release = Storage.Json().Deserialize<AssistantRelease>(Encoding.UTF8.GetString(payload));
             if (release == null || release.Schema != 1 || release.Application != "WoWS-Aslain-Assistant") throw new InvalidDataException("更新信息不属于本助手。");
             NormalizeVersion(release.Version);
+            var published = release.PublicationTime;
             if (release.Size < 1024 || release.Size > 64 * 1024 * 1024 || !Regex.IsMatch(release.Sha256 ?? "","^[a-fA-F0-9]{64}$")) throw new InvalidDataException("助手更新文件信息无效。");
             if (release.Urls == null || release.Urls.Length == 0 || release.Urls.Length > 4 || release.Urls.Any(x=>!AssistantUpdateClient.AllowedUrl(x))) throw new InvalidDataException("助手安装包下载地址不受支持。");
             return release;
@@ -67,7 +87,7 @@ namespace AslainAssistant
         {
             publicKey = verificationKey;
             client = new HttpClient(handler) { Timeout=Timeout.InfiniteTimeSpan };
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("WoWS-Aslain-Assistant/1.4");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("WoWS-Aslain-Assistant/"+Assembly.GetExecutingAssembly().GetName().Version.ToString(3));
         }
         public static bool AllowedUrl(string value)
         {
@@ -198,6 +218,11 @@ namespace AslainAssistant
         public bool Busy { get; private set; }
         public bool Handoff { get; private set; }
         public bool Allowed { get { return allowed; } }
+        public AssistantRelease PublishedRelease { get; private set; }
+        public string VersionStatus { get; private set; }
+        public string PublishedVersion { get { return PublishedRelease == null ? "待检查" : AssistantRelease.NormalizeVersion(PublishedRelease.Version).ToString(3); } }
+        public bool UpdateAvailable { get { return PublishedRelease != null && !PublishedRelease.IsHistorical && AssistantRelease.NormalizeVersion(PublishedRelease.Version)>CurrentVersion; } }
+        public DateTimeOffset NextVersionCheck=DateTimeOffset.Now.AddMinutes(2);
         public DateTimeOffset NextCheck=DateTimeOffset.Now.AddMinutes(2);
         public string Status="每 6 小时检查助手新版；发现后自动下载、校验并更新。";
         public Version CurrentVersion=Assembly.GetExecutingAssembly().GetName().Version;
@@ -220,12 +245,45 @@ namespace AslainAssistant
         public SelfUpdateEngine(string directory,AssistantUpdateClient transport,bool allow)
         {
             root=directory; client=transport; allowed=allow; Settings=AssistantUpdateSettings.Load(root);
+            VersionStatus="尚未自检。检查 GitHub 已发布的安装包版本。";
             if(!allowed) Status="演示 / 测试配置不执行助手自更新。";
             else if(!Settings.Enabled) Status="助手自动更新已暂停，可以手动检查。";
         }
         void State(string text) { Status=text; if(Changed!=null) Changed(); if(Log!=null) Log(text); }
         public void SetEnabled(bool enabled) { Settings.Enabled=enabled; Settings.Save(root); NextCheck=DateTimeOffset.Now.AddSeconds(15); State(enabled ? "已开启助手自动更新，每 6 小时检查。" : "助手自动更新已暂停，可以手动检查。"); }
         public void Cancel() { if(cancellation!=null && !Handoff) cancellation.Cancel(); }
+        async Task<AssistantRelease> InspectVersion(CancellationToken token)
+        {
+            PublishedRelease=null;
+            VersionStatus="正在检查助手版本…"; State(VersionStatus);
+            if(!NetworkAvailable()) throw new IOException("网络不可用");
+            var release=await client.Latest(token);
+            Settings.LastCheck=DateTimeOffset.Now.ToString("o"); Settings.Save(root);
+            PublishedRelease=release;
+            if(release.IsHistorical) VersionStatus="GitHub 仍为重置版本号前的历史发行版，保留当前助手。";
+            else if(UpdateAvailable) VersionStatus="发现助手新版，可以下载并安装。";
+            else if(AssistantRelease.NormalizeVersion(release.Version)==CurrentVersion) VersionStatus="当前助手与已发布版本一致。";
+            else VersionStatus="当前助手版本高于已发布版本，无需更新。";
+            NextVersionCheck=DateTimeOffset.Now.AddHours(6);
+            return release;
+        }
+        public async Task CheckVersion()
+        {
+            if(Busy || !allowed) return;
+            Busy=true; cancellation=new CancellationTokenSource();
+            try
+            {
+                await InspectVersion(cancellation.Token);
+                State("助手版本自检 · 当前 "+CurrentVersion.ToString(3)+" · GitHub 已发布 "+PublishedVersion+" · "+VersionStatus);
+            }
+            catch(OperationCanceledException) { VersionStatus="版本自检已取消。"; NextVersionCheck=DateTimeOffset.Now.AddMinutes(15); State(VersionStatus); }
+            catch(Exception ex)
+            {
+                PublishedRelease=null; NextVersionCheck=DateTimeOffset.Now.AddMinutes(15);
+                VersionStatus="暂时无法确认已发布版本："+ex.Message+"。可稍后重试。"; State(VersionStatus);
+            }
+            finally { Busy=false; cancellation.Dispose(); cancellation=null; if(Changed!=null) Changed(); }
+        }
         public async Task Run(bool manual)
         {
             if(Busy || !allowed || (!manual && !Settings.Enabled)) return;
@@ -234,12 +292,9 @@ namespace AslainAssistant
             {
                 if(pending==null)
                 {
-                    if(!NetworkAvailable()) { NextCheck=DateTimeOffset.Now.AddMinutes(15); State("网络不可用，已保留当前助手；15 分钟后重试。"); return; }
-                    State("正在检查助手新版本…");
-                    var latest=await client.Latest(cancellation.Token);
-                    Settings.LastCheck=DateTimeOffset.Now.ToString("o"); Settings.Save(root);
-                    if(AssistantRelease.NormalizeVersion(latest.Version)<=CurrentVersion) { State("助手已是最新版本 · "+CurrentVersion.ToString(3)); return; }
-                    if(!manual && Settings.AttemptedVersion==latest.Version) { State("上次助手升级未完成，当前版本继续可用；点击「检查助手更新」可重试。"); return; }
+                    var latest=await InspectVersion(cancellation.Token);
+                    if(!UpdateAvailable) { State("GitHub 已发布 "+PublishedVersion+" · "+VersionStatus); return; }
+                    if(!manual && Settings.AttemptedVersion==latest.Version) { State("上次助手升级未完成，当前版本继续可用；点击「下载并安装助手新版」可重试。"); return; }
                     State("正在下载助手 "+latest.Version+"，完成后校验发布签名和 SHA-256…");
                     pendingFile=await client.Download(latest,Path.Combine(root,"assistant-updates"),null,cancellation.Token); pending=latest;
                 }
@@ -256,7 +311,7 @@ namespace AslainAssistant
                 State("助手安装器已完成，请重新打开助手。");
             }
             catch(OperationCanceledException) { State("助手更新已取消，当前版本继续可用。"); }
-            catch(Exception ex) { pending=null; pendingFile=null; NextCheck=DateTimeOffset.Now.AddMinutes(15); State("助手更新未完成，当前版本继续可用："+ex.Message); }
+            catch(Exception ex) { pending=null; pendingFile=null; if(PublishedRelease==null) VersionStatus="暂时无法确认已发布版本："+ex.Message; NextVersionCheck=NextCheck=DateTimeOffset.Now.AddMinutes(15); State("助手更新未完成，当前版本继续可用："+ex.Message); }
             finally { Busy=false; Handoff=false; cancellation.Dispose(); cancellation=null; if(Changed!=null) Changed(); }
         }
         public void Dispose() { Cancel(); client.Dispose(); }

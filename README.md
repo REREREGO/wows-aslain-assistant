@@ -1,87 +1,101 @@
 # 窝窝斯坐牢小助手
 
-<img src="assets/logo/lan-blue-shield.png" width="96" alt="懒字蓝盾图标">
+<img src="assets/logo/lan-blue-shield.png" width="88" alt="懒字蓝盾图标">
 
-> made with GPT 6 Astra
+因为懒得每次手动更新阿斯兰，写了这个助手。
 
-因为懒得手动更新阿斯兰，写了这个助手。
+选一次插件，以后让它定期检查、下载并安装。国服、外服分开管理；也能直接导入群友的配置，省得对着截图挨个勾选。
 
-第一次选好插件，以后让它定期检查、下载并安装更新。国服、外服都能用，也可以添加多个游戏目录，每套客户端的插件配置分别保存。
+**[下载 1.0.1 安装包](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.1/AslainAssistant.Setup.exe)** · [更新说明](https://github.com/REREREGO/wows-aslain-assistant/releases/tag/v1.0.1) · [反馈问题](https://github.com/REREREGO/wows-aslain-assistant/issues)
 
-**也能直接抄群友的配置。** 看上群友的插件搭配，让他导出一份配置发给你，导入后就能按同一套选择安装，不用对着截图挨个勾，以后照样自动更新。
+适用于 Windows，需要 .NET Framework 4.8。更新的是阿斯兰**经典模组包**。
 
-**[下载最新版](https://github.com/REREREGO/wows-aslain-assistant/releases/latest/download/AslainAssistant.Setup.exe)** · [反馈问题](https://github.com/REREREGO/wows-aslain-assistant/issues)
+![1.0.1 更新概览](docs/images/dashboard-light.png)
 
-适用于 Windows，需要 .NET Framework 4.8。更新的是阿斯兰经典模组包。
+## 第一次用
 
-![更新概览](docs/images/dashboard-light.png)
+1. 运行安装包，安装后从桌面快捷方式打开。
+2. 左侧选客户端，到 **客户端设置** 选择游戏目录，选到包含 `WorldOfWarships.exe` 的那一层。也可以试试 **自动发现**。
+3. 已经装过阿斯兰，就在 **插件配置** 点 **读取已装配置**。第一次装，点 **选择插件 / 重装**，在阿斯兰安装器里选好插件。
+4. 想让助手以后自己更新，到 **客户端设置** 开启 **自动下载并更新此客户端**，再按需要设置检查间隔和开机启动。
 
-<details>
-<summary>看看深色界面</summary>
+点关闭后，助手会留在托盘运行。单击托盘图标打开窗口；右键选 **退出助手** 才会完全退出。
 
-![深色界面](docs/images/dashboard-dark.png)
-
-</details>
-
-## 开始使用
-
-1. 下载并运行 `AslainAssistant.Setup.exe`，安装后从桌面快捷方式打开。
-2. 左侧选国服或外服，在 **客户端设置** 里选择游戏目录，也可以点 **自动发现**。目录选到包含 `WorldOfWarships.exe` 的那一层。
-3. 已经装过阿斯兰的，助手会尝试读取原来的插件选择；没装过的，到 **插件配置** 点 **选择插件 / 重装**，在阿斯兰安装器里手动选一次插件。
-4. 在 **客户端设置** 中开启 **自动下载并更新此客户端**，设好检查间隔。想开机就运行，再打开 **开机登录后启动助手**。
-
-设置完就可以关掉窗口，助手会留在托盘里。左键单击托盘图标重新打开，右键显示菜单，选择 **退出助手** 才会完全退出。
-
-手动安装或重装时，如果游戏还开着，会弹窗提醒你关闭游戏后重试；后台自动更新则会等你退出游戏再装。如果模组包对应的游戏版本更高，会先下载，等游戏更新后再装。安装过程中可能需要确认 Windows 的管理员授权。
+有多个客户端就点 **添加客户端**，分别设置目录和插件。不要的客户端可以在设置里删除，游戏和模组不会被删掉。
 
 ## 直接抄群友的配置
 
-1. 群友在 **插件配置 → 导出配置**，把导出的 JSON 或 INF 文件发给你。阿斯兰自己导出的 REG 文件也可以。
-2. 你在助手里选好客户端和自己的游戏目录，进入 **插件配置 → 导入配置**，选中收到的文件。
-3. 直接点本页出现的 **使用该配置更新**，按导入的配置安装插件。想以后自动更新，再开启 **自动下载并更新此客户端**。
+让群友在 **插件配置 → 导出配置** 发你一份 JSON 或 INF；阿斯兰导出的 REG 也支持。
 
-**使用该配置更新** 只在有导入预设待应用时出现，即使阿斯兰已经是最新版也能安装。验证安装成功后按钮隐藏，这份选择会成为后续更新使用的历史配置。
+你选好自己的客户端，点 **导入配置**，然后点同一页的 **使用该配置更新**。哪怕阿斯兰已经是最新版，也会按这份新配置重新安装。
 
-**更新概览 → 使用历史配置更新** 和后台自动更新沿用历史安装配置，不会应用尚未确认的导入预设。
+![导入群友配置后直接应用](docs/images/presets.png)
 
-分享的是配置，模组文件仍由阿斯兰下载、安装，不用拷贝整个模组文件夹。已设置的本机游戏目录会保留；导入后自动更新会暂停，确认后再开。国服和外服更新进度可能不同，尽量找相同游戏版本的配置。
+装好后，这份选择就会成为后续自动更新使用的配置。导入时会暂停该客户端的自动更新，确认效果后再打开。
 
-## 插件和客户端配置
+| 按钮 | 用哪份配置 |
+| --- | --- |
+| **使用该配置更新** | 刚导入、还没应用的预设；安装成功后按钮消失 |
+| **使用历史配置更新** | 上次安装成功的配置；后台自动更新也用这一份 |
 
-- **有多套游戏**：点左下角 **添加客户端**，分别设置路径、插件和检查间隔。
-- **不需要的客户端**：选中后到 **客户端设置 → 删除客户端**。只移除助手里的配置，游戏和已安装的模组会保留。
-- **想换插件**：进入 **插件配置 → 选择插件 / 重装**，重新打开阿斯兰安装器选择。
-- **已经手动装好了**：点 **插件配置 → 读取已装配置**，让助手沿用这次的选择。
-- **备份或换电脑**：在 **插件配置 → 导出配置** 保存一份，换电脑后选好新的游戏目录再导入。
+分享的是插件选择，不是整个模组文件夹。助手会保留你的游戏目录。国服和外服更新进度可能不同，尽量找相同游戏版本的配置。
 
-左下角的 **外观** 可以切换深色、浅色，重启后会记住。
+## 更新时会发生什么
 
-## 更新和报错
+- **游戏开着**：手动安装会提醒你退出游戏后重试，后台更新会等待。助手不会替你关闭游戏。
+- **模组包比游戏版本新**：先下载，等游戏更新到对应版本再安装。
+- **网络断了**：保留现有模组和配置；开启自动更新时，约 15 分钟后重试。
 
-助手自身也会自动更新，开关在 **客户端设置 → 助手更新**。手动下载新版安装包覆盖安装也可以，安装器会自动退出旧助手，保留原来的配置。
+1.0.1 支持国内查询和下载：版本信息从 [Gitee](https://gitee.com/rererergo/aslain_versions) 读取，安装包从 [GitCode](https://gitcode.com/REREREGO/aslain_versions/releases) 下载，失败时再尝试官网。
 
-阿斯兰支持国内版本源和下载镜像，失败时尝试下一来源，安装前会核对官网校验值。**客户端设置 → 国内镜像** 中也有蓝奏云备用入口，下载后可点 **导入已下载的安装包** 校验并缓存。
+**客户端设置 → 国内镜像** 还有蓝奏云备用入口，提取码 `6fpw`。手动下载后，点 **导入已下载的安装包**，校验通过就能用于安装。
 
-国内查询版本走 [Gitee](https://gitee.com/rererergo/aslain_versions)，安装包从 [GitCode 发行版](https://gitcode.com/REREREGO/aslain_versions/releases) 下载，不需要登录 GitCode。镜像不可用时尝试官网；蓝奏云备用目录的提取码是 `6fpw`。
+阿斯兰安装器中的部分插件仍需连接它自己的下载服务器，所以拿到安装包不代表所有插件都能离线安装。
 
-安装器中的部分插件还需要从 Aslain 服务器下载，镜像安装包不等于全部插件都能离线安装。助手新版仍从 GitHub 下载。断网时保留现有模组和配置，开启自动更新后约 15 分钟重试一次。
+## 助手自己的版本
 
-维护镜像的定时同步、两年保留与容量清理方式见 [镜像维护说明](docs/MIRRORS.md)。
+左下角显示当前版本。点 **版本自检**，就能查看 GitHub 已发布的版本和检查结果；这一步不会直接安装。发现新版后，再点 **下载并安装助手新版**。
 
-如果提示模组没有装完整，先点 **查看处理方案**。能从日志中找到下载地址的资源包，会列出链接和该放的缓存目录。按提示下载，保持原文件名放进去，不要解压；重装时也别勾选清空下载缓存。
+想全自动接收助手更新，在 **客户端设置** 开启 **自动接收助手新版**。关闭后仍会定期检查，由你决定是否安装。覆盖安装会退出旧助手，保留客户端和插件配置。
 
-仍然装不上，可以到 [Issues](https://github.com/REREREGO/wows-aslain-assistant/issues) 附上报错截图和 **运行日志** 中的相关记录，注明游戏及阿斯兰版本。
+左下角也可以切换深浅主题，重启后会记住。
 
-## 从源码构建
+![1.0.1 深色界面](docs/images/dashboard-dark.png)
 
-这一节给想自己编译或修改助手的开发者看。普通玩家下载上面的安装包就行，不需要运行这些命令。
+## 装完发现少了插件
 
-项目使用 C# / .NET Framework 4.8 / WinForms，界面组件库是 AntdUI。下载源码后，在项目目录的 Windows PowerShell 中运行：
+先点 **查看处理方案**。助手会根据安装日志列出能找到的资源下载地址、文件名和缓存目录。按提示补好文件后重装，别勾选清空下载缓存。
+
+仍然有问题，可以到 [Issues](https://github.com/REREREGO/wows-aslain-assistant/issues) 发截图和运行日志，附上助手版本、游戏版本、阿斯兰版本及区服。
+
+<details>
+<summary>给想自己编译或修改的开发者</summary>
+
+普通玩家下载安装包即可，不需要运行下面的命令。
+
+项目使用 C# / .NET Framework 4.8 / WinForms，界面统一使用 AntdUI 2.4.19。在 Windows PowerShell 中运行：
 
 ```powershell
 .\build.ps1 -OutputDirectory build
 ```
 
-发布流程见 [发布说明](docs/RELEASING.md)，组件库许可见 [AntdUI LICENSE](vendor/AntdUI/2.4.19/LICENSE.txt)。
+[发布说明](docs/RELEASING.md) · [国内镜像维护](docs/MIRRORS.md) · [AntdUI 许可证](vendor/AntdUI/2.4.19/LICENSE.txt)
 
-这是个人做的非官方工具，阿斯兰模组包来自 [Aslain](https://aslain.com/)。
+</details>
+
+个人制作的非官方工具，阿斯兰模组包来自 [Aslain](https://aslain.com/)。made with GPT 6 Astra。
+
+## 全部版本下载
+
+包括最新版和全部历史发行版，暂不限制保留数量。
+
+| 版本 | 主要变化 | 安装包 |
+| --- | --- | --- |
+| **1.0.1（最新）** | 国内版本源与下载镜像、助手版本自检 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.1/AslainAssistant.Setup.exe) |
+| 1.4.4 | 托盘单击打开 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.4.4/AslainAssistant.Setup.exe) |
+| 1.4.3 | 导入配置后直接应用 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.4.3/AslainAssistant.Setup.exe) |
+| 1.4.2 | 修复打开延迟和客户端列表 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.4.2/AslainAssistant.Setup.exe) |
+| 1.4.1 | 支持删除客户端 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.4.1/AslainAssistant.Setup.exe) |
+| 1.4.0 | 单实例、助手自动更新、断网恢复 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.4.0/AslainAssistant.Setup.exe) |
+
+[查看全部发行记录](https://github.com/REREREGO/wows-aslain-assistant/releases)

@@ -30,6 +30,8 @@ namespace AslainAssistant
         readonly Ant.Segmented themeMode = new Ant.Segmented();
         readonly Ant.Switch assistantAutomatic = new Ant.Switch();
         readonly Ant.Label assistantUpdateStatus = UiTheme.Label("");
+        readonly Ant.Label assistantVersionStatus = UiTheme.Label(""), assistantCheckedAt = UiTheme.Label("",9);
+        Ant.Button checkAssistantVersion, installAssistantUpdate, assistantVersionEntry;
         readonly SelfUpdateEngine selfUpdate;
         InstanceServer instanceServer;
         InstanceServer activationServer;
@@ -41,7 +43,7 @@ namespace AslainAssistant
         readonly bool background;
         UpdateEngine selected;
         Ant.Button cancel, update, deleteClient, addClient, applyPreset;
-        Ant.Panel statusCard;
+        Ant.Panel statusCard, assistantCard;
         bool binding, quitting, booted;
         bool loadingClients;
         readonly CancellationTokenSource startupCancellation = new CancellationTokenSource();
@@ -148,6 +150,8 @@ namespace AslainAssistant
             var sidebarTitle = TextLabel("游戏客户端",38,11,true); sidebarTitle.Dock = DockStyle.Top;
             clientTiles.Dock = DockStyle.Fill; clientTiles.Vertical = true; clientTiles.Gap = 10; clientTiles.AutoScroll = true; clientTiles.BackColor = Color.Transparent;
             addClient = Button("添加客户端",AddClient,false,"PlusOutlined"); addClient.Dock = DockStyle.Bottom;
+            assistantVersionEntry=Button("v"+selfUpdate.CurrentVersion.ToString(3)+" · 版本自检",OpenAssistantVersion,false,"InfoCircleOutlined");
+            assistantVersionEntry.Dock=DockStyle.Bottom; assistantVersionEntry.AccessibleName="当前助手版本 "+selfUpdate.CurrentVersion.ToString(3)+"，点击自检版本";
             var about = TextLabel("Ctrl + 1–4 切换功能页\n关闭窗口后继续在托盘守护",62,8.5f); UiTheme.Secondary(about); about.Dock = DockStyle.Bottom;
             themeMode.Items.Add(new Ant.SegmentedItem { Text = "浅色", IconSvg = "SunOutlined" });
             themeMode.Items.Add(new Ant.SegmentedItem { Text = "深色", IconSvg = "MoonOutlined" });
@@ -156,7 +160,7 @@ namespace AslainAssistant
             UiTheme.Bind(themeMode,()=>{themeMode.BorderColor=Ant.Style.Db.BorderColor;themeMode.ItemBorderColor=Ant.Style.Db.BorderColor;});
             themeMode.SelectIndexChanged += (s,e)=>Guard(ChangeTheme);
             var themeSection = UiTheme.Column(TextLabel("外观",26,9),themeMode); themeSection.Dock = DockStyle.Bottom; themeSection.Height = 82; themeSection.Gap = 6;
-            sidebar.Controls.Add(clientTiles); sidebar.Controls.Add(themeSection); sidebar.Controls.Add(about); sidebar.Controls.Add(addClient); sidebar.Controls.Add(sidebarTitle);
+            sidebar.Controls.Add(clientTiles); sidebar.Controls.Add(themeSection); sidebar.Controls.Add(about); sidebar.Controls.Add(addClient); sidebar.Controls.Add(assistantVersionEntry); sidebar.Controls.Add(sidebarTitle);
             var main = new Ant.Panel { Dock = DockStyle.Fill, Back = UiTheme.Background, Radius = 0, Padding = new Padding(24,14,24,14) };
             UiTheme.Bind(main,()=>main.Back = UiTheme.Background);
             var selection = new Ant.Panel { Height = 60, Dock = DockStyle.Top, Back = Color.Transparent };
@@ -193,12 +197,16 @@ namespace AslainAssistant
             var startupCard = Card("助手设置",146,ToggleRow(startup,"开机登录后启动助手","所有客户端共用此设置"));
             assistantAutomatic.Checked = selfUpdate.Allowed && selfUpdate.Settings.Enabled;
             assistantAutomatic.CheckedChanged += (s,e)=>Guard(()=>{if(binding || !selfUpdate.Allowed)return;selfUpdate.SetEnabled(assistantAutomatic.Checked);});
-            assistantUpdateStatus.Height = 64;
-            var assistantActions = UiTheme.Actions(Button("检查助手更新",()=>{var task=CheckAssistant(true);},false,"SyncOutlined"),Button("项目与使用说明",()=>Process.Start(new ProcessStartInfo(AssistantUpdateClient.Repository){UseShellExecute=true}),false,"GithubOutlined"));
-            var assistantCard = Card("助手更新 · 当前 "+selfUpdate.CurrentVersion.ToString(3),292,ToggleRow(assistantAutomatic,"自动接收助手新版","每 6 小时检查，安装时自动退出旧助手"),assistantUpdateStatus,assistantActions);
+            assistantUpdateStatus.Height = 54;
+            assistantVersionStatus.Height = 68; assistantVersionStatus.AccessibleName="助手版本自检结果";
+            assistantCheckedAt.Height = 24; UiTheme.Secondary(assistantCheckedAt);
+            checkAssistantVersion=Button("自检助手版本",()=>{var task=CheckAssistantVersion();},false,"SyncOutlined"); checkAssistantVersion.Width=148;
+            installAssistantUpdate=Button("下载并安装助手新版",()=>{var task=CheckAssistant(true);},true,"CloudDownloadOutlined"); installAssistantUpdate.Width=196;
+            var assistantActions = UiTheme.Actions(checkAssistantVersion,installAssistantUpdate,Button("查看发行版",()=>Process.Start(new ProcessStartInfo(AssistantUpdateClient.Repository+"/releases/latest"){UseShellExecute=true}),false,"GithubOutlined"));
+            assistantCard = Card("助手版本 · 当前 "+selfUpdate.CurrentVersion.ToString(3),400,assistantVersionStatus,assistantCheckedAt,assistantActions,ToggleRow(assistantAutomatic,"自动接收助手新版","关闭后仍会检查版本，安装由你决定"),assistantUpdateStatus);
             var importInstaller=ClientButton("导入已下载的安装包",()=>{var task=ImportMirrorInstaller();},false,"ImportOutlined"); importInstaller.Width=210;
             var mirrors = Card("国内镜像",280,TextLabel("优先从国内版本源检查更新。蓝奏云备用下载，提取码："+MirrorSettings.LanzouPassword,54),UiTheme.Actions(Button("版本源设置",ConfigureMirrors,false,"SettingOutlined"),Button("蓝奏云下载",()=>Process.Start(new ProcessStartInfo(MirrorSettings.LanzouFolder){UseShellExecute=true}),false,"CloudDownloadOutlined")),UiTheme.Actions(importInstaller));
-            Page("客户端设置","SettingOutlined",UiTheme.Column(path,autoCard,mirrors,startupCard,assistantCard));
+            Page("客户端设置","SettingOutlined",UiTheme.Column(assistantCard,path,autoCard,mirrors,startupCard));
 
             presetLabel.Height = 64;
             applyPreset = ClientButton("使用该配置更新",()=>{var task=ApplyImportedPreset();},true,"CloudDownloadOutlined");

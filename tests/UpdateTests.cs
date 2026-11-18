@@ -57,7 +57,7 @@ namespace AslainAssistant
                 string setup=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"AslainAssistant.Setup.exe");
                 byte[] package=File.ReadAllBytes(setup); string hash;
                 using(var sha=SHA256.Create()) hash=BitConverter.ToString(sha.ComputeHash(package)).Replace("-","").ToLowerInvariant();
-                var release=new AssistantRelease {Schema=1,Application="WoWS-Aslain-Assistant",Version=FileVersionInfo.GetVersionInfo(setup).FileVersion,Size=package.Length,Sha256=hash,Urls=new[]{AssistantUpdateClient.Repository+"/releases/download/test/AslainAssistant.Setup.exe"}};
+                var release=new AssistantRelease {Schema=1,Application="WoWS-Aslain-Assistant",Version=FileVersionInfo.GetVersionInfo(setup).FileVersion,PublishedUtc=DateTimeOffset.UtcNow.ToString("o"),Size=package.Length,Sha256=hash,Urls=new[]{AssistantUpdateClient.Repository+"/releases/download/test/AslainAssistant.Setup.exe"}};
                 string signed=Signed(release,key), publicKey=key.ToXmlString(false);
                 Assert(AssistantRelease.Parse(signed,publicKey).Sha256==hash,"Valid signature rejected");
                 using(var wrongKey=new RSACryptoServiceProvider(2048))
@@ -71,6 +71,58 @@ namespace AslainAssistant
                 var fallback=new FakeHttp {Respond=r=>r.RequestUri.Host=="github.com" ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) : new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent(signed)}};
                 using(var client=new AssistantUpdateClient(fallback,publicKey)) Assert((await client.Latest(CancellationToken.None)).Sha256==hash && fallback.Calls==2,"Feed fallback failed");
                 Pass("backup metadata endpoint works when the primary endpoint is unavailable");
+                string checkRoot=Path.Combine(root,"version-check");
+                new AssistantUpdateSettings {Enabled=false,AttemptedVersion="keep-attempt"}.Save(checkRoot);
+                var checkedRelease=Storage.Json().Deserialize<AssistantRelease>(Storage.Json().Serialize(release));
+                var checkHttp=new FakeHttp {Respond=r=>
+                {
+                    Assert(r.RequestUri.AbsolutePath.EndsWith(".json"),"Version check downloaded an installer");
+                    return new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent(Signed(checkedRelease,key))};
+                }};
+                using(var engine=new SelfUpdateEngine(checkRoot,new AssistantUpdateClient(checkHttp,publicKey),true))
+                {
+                    engine.CurrentVersion=new Version(1,0,1,0); engine.NetworkAvailable=()=>true;
+                    engine.Launch=file=>{throw new Exception("Version check launched setup");};
+                    engine.CanInstall=()=>{throw new Exception("Version check touched installation state");};
+                    checkedRelease.Version="1.0.2";
+                    await engine.CheckVersion();
+                    Assert(engine.UpdateAvailable && engine.PublishedVersion=="1.0.2" && !engine.Busy && !engine.Settings.Enabled,"New release was not detected independently of auto-install");
+                    Assert(!Directory.Exists(Path.Combine(checkRoot,"assistant-updates")) && engine.Settings.AttemptedVersion=="keep-attempt","Check modified installation state");
+                    Assert(!AssistantUpdateSettings.Load(checkRoot).Enabled && engine.NextVersionCheck>DateTimeOffset.Now.AddHours(5),"Check enabled automatic updates or lost its schedule");
+                    checkedRelease.Version="1.0.1"; await engine.CheckVersion();
+                    Assert(!engine.UpdateAvailable && engine.VersionStatus.Contains("一致"),"Equal versions not recognized");
+                    checkedRelease.Version="1.0.0"; await engine.CheckVersion();
+                    Assert(!engine.UpdateAvailable && engine.VersionStatus.Contains("高于"),"Local newer build misreported");
+                    Pass("version self-check compares releases without downloading, installing or enabling auto-update");
+                    checkedRelease.Version="1.4.4"; checkedRelease.PublishedUtc="2026-11-18T08:15:03Z";
+                    await engine.CheckVersion();
+                    Assert(!engine.UpdateAvailable && engine.VersionStatus.Contains("历史") && engine.PublishedVersion=="1.4.4","Historical larger number was promoted as an update");
+                    await engine.Run(true);
+                    engine.SetEnabled(true); await engine.Run(false); engine.SetEnabled(false);
+                    Assert(!Directory.Exists(Path.Combine(checkRoot,"assistant-updates")),"Historical release was downloaded by manual or automatic install");
+                    Pass("pre-reset releases cannot overwrite 1.0.1 through either install path");
+                    string lastCheck=engine.Settings.LastCheck; int calls=checkHttp.Calls;
+                    engine.NetworkAvailable=()=>false; await engine.CheckVersion();
+                    Assert(checkHttp.Calls==calls && engine.PublishedRelease==null && !engine.UpdateAvailable && engine.VersionStatus.Contains("无法确认"),"Offline state retained a stale update or claimed latest");
+                    Assert(engine.Settings.LastCheck==lastCheck && engine.NextVersionCheck>DateTimeOffset.Now.AddMinutes(14) && !engine.Busy,"Failed check changed success timestamp or did not retry");
+                    engine.NetworkAvailable=()=>true; checkedRelease.Version="1.0.2"; checkedRelease.PublishedUtc=release.PublishedUtc;
+                    await engine.CheckVersion(); Assert(engine.UpdateAvailable,"Online retry did not recover");
+                    checkedRelease.PublishedUtc=null; await engine.CheckVersion();
+                    Assert(!engine.UpdateAvailable && engine.PublishedRelease==null && engine.VersionStatus.Contains("发布时间"),"Missing release chronology accepted");
+                    checkedRelease.PublishedUtc=release.PublishedUtc;
+                    checkHttp.Respond=r=>new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent("{\"Payload\":\"invalid\",\"Signature\":\"invalid\"}")};
+                    await engine.CheckVersion(); Assert(!engine.UpdateAvailable && engine.PublishedRelease==null && engine.VersionStatus.Contains("无法确认"),"Unverified metadata presented as a release");
+                    Pass("offline and untrusted checks remain retryable and clear stale release results");
+                }
+                var pendingHttp=new PendingHttp();
+                using(var engine=new SelfUpdateEngine(Path.Combine(root,"version-cancel"),new AssistantUpdateClient(pendingHttp,publicKey),true))
+                {
+                    engine.NetworkAvailable=()=>true;
+                    var pendingCheck=engine.CheckVersion(); Assert(engine.Busy,"Pending check not marked busy");
+                    await engine.CheckVersion(); engine.Cancel(); await pendingCheck;
+                    Assert(!engine.Busy && !engine.UpdateAvailable && engine.VersionStatus.Contains("取消"),"Duplicate/cancelled check did not release busy state");
+                }
+                Pass("version checks reject overlapping work and support cancellation");
                 var valid=new FakeHttp {Respond=r=>new HttpResponseMessage(HttpStatusCode.OK){Content=new ByteArrayContent(package)}};
                 using(var client=new AssistantUpdateClient(valid,publicKey))
                 {

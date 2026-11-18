@@ -234,6 +234,21 @@ namespace AslainAssistant
             try
             {
                 ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
+                if(args.Contains("--self-check-live"))
+                {
+                    string checkRoot=Path.GetFullPath(Path.Combine("artifacts","version-check-live-"+DateTime.Now.ToString("yyyyMMdd-HHmmss")));
+                    new AssistantUpdateSettings {Enabled=false}.Save(checkRoot);
+                    using(var engine=new SelfUpdateEngine(checkRoot,new AssistantUpdateClient(),true))
+                    {
+                        engine.Launch=file=>{throw new Exception("Read-only check must not launch setup");};
+                        engine.CheckVersion().GetAwaiter().GetResult();
+                        Console.WriteLine(engine.Status);
+                        if(engine.PublishedRelease==null) return 1;
+                        if(Directory.Exists(Path.Combine(checkRoot,"assistant-updates")) || engine.Settings.Enabled) throw new Exception("Self-check changed installation state");
+                        Console.WriteLine("LIVE verified release metadata only; no installer downloaded or launched.");
+                    }
+                    return 0;
+                }
                 if(args.Contains("--self-live"))
                 {
                     using(var client=new AssistantUpdateClient())

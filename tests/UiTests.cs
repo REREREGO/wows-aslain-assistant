@@ -52,6 +52,44 @@ namespace AslainAssistant
             first.Game = new GameState { GameVersion = "15.10.0", HasInstallation = true, Installed = PackVersion.Parse("15.10.0_08") };
             first.Release = new Release { Version = PackVersion.Parse("15.10.0_09") };
             Call(form,"RefreshUi");
+            Test("assistant version is visible and self-check controls fit in both themes",()=>
+            {
+                var self=(SelfUpdateEngine)Field(form,"selfUpdate");
+                var releaseProperty=typeof(SelfUpdateEngine).GetProperty("PublishedRelease");
+                var statusProperty=typeof(SelfUpdateEngine).GetProperty("VersionStatus");
+                string oldStatus=self.VersionStatus; Size oldSize=form.Size;
+                try
+                {
+                    var entry=(AntdUI.Button)Field(form,"assistantVersionEntry");
+                    Assert(entry.Text.Contains("v1.0.1") && entry.Dock==DockStyle.Bottom && entry.Parent.Dock==DockStyle.Left,"Current version missing from bottom-left sidebar");
+                    Assert(FindControl(form,"助手版本 · 当前 1.0.1") is AntdUI.Label,"Current version missing from settings");
+                    pages.SelectedIndex=0;
+                    typeof(Control).GetMethod("OnClick",Flags).Invoke(entry,new object[]{EventArgs.Empty});
+                    Assert(pages.SelectedIndex==1,"Bottom-left self-check entry did not navigate to assistant settings");
+                    pages.SelectedIndex=1; Call(form,"RefreshUi");
+                    Assert(!((AntdUI.Button)Field(form,"installAssistantUpdate")).Visible,"Install action offered before verified version check");
+                    releaseProperty.SetValue(self,new AssistantRelease {Version="1.0.2",PublishedUtc=DateTimeOffset.UtcNow.ToString("o")},null);
+                    statusProperty.SetValue(self,"发现助手新版，可以下载并安装。",null);
+                    foreach(int mode in new[]{1,0})
+                    {
+                        ((AntdUI.Segmented)Field(form,"themeMode")).SelectIndex=mode;
+                        form.Size=form.MinimumSize; Call(form,"RefreshUi"); UiTheme.LayoutVisible(pages); Application.DoEvents();
+                        foreach(string field in new[]{"assistantVersionEntry","checkAssistantVersion","installAssistantUpdate","assistantVersionStatus","assistantCheckedAt"})
+                        {
+                            var control=(Control)Field(form,field); Fits(control);
+                            if(control is AntdUI.Button) foreach(Control peer in control.Parent.Controls) if(peer!=control && peer.Visible) Assert(!control.Bounds.IntersectsWith(peer.Bounds),"Self-check actions overlap");
+                        }
+                        Assert(((AntdUI.Label)Field(form,"assistantVersionStatus")).Text.Contains("1.0.2"),"Published version not displayed");
+                        var card=FindControl(form,"助手版本 · 当前 1.0.1").Parent;
+                        using(var bitmap=new Bitmap(card.Width,card.Height))
+                        {
+                            card.DrawToBitmap(bitmap,new Rectangle(Point.Empty,card.Size));
+                            bitmap.Save(Path.Combine(Storage.Root,"assistant-version-"+(mode==1?"dark":"light")+".png"));
+                        }
+                    }
+                }
+                finally {releaseProperty.SetValue(self,null,null);statusProperty.SetValue(self,oldStatus,null);form.Size=oldSize;pages.SelectedIndex=0;Call(form,"RefreshUi");}
+            });
             Test("domestic mirror controls use library widgets and fit in both themes",()=>
             {
                 pages.SelectedIndex=1;
