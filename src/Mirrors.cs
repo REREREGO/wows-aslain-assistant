@@ -143,7 +143,7 @@ namespace AslainAssistant
                         using (var stream=await response.Content.ReadAsStreamAsync())
                         using (var buffer=new MemoryStream())
                         {
-                            await CopyBounded(stream,buffer,2*1024*1024,0,null,timeout.Token);
+                            await BoundedTransfer.Copy(stream,buffer,2*1024*1024,0,null,timeout.Token);
                             string text=MirrorCatalog.Unwrap(Encoding.UTF8.GetString(buffer.ToArray()));
                             var catalog=MirrorCatalog.Parse(text,MirrorPublicKey,DateTimeOffset.UtcNow);
                             SourceDetail="国内镜像 · 同步于 "+DateTimeOffset.Parse(catalog.GeneratedUtc).ToLocalTime().ToString("MM-dd HH:mm");
@@ -187,7 +187,7 @@ namespace AslainAssistant
                 using (var input=await response.Content.ReadAsStreamAsync())
                 {
                     using (var output=new FileStream(path,FileMode.Create,FileAccess.Write,FileShare.None))
-                        await CopyBounded(input,output,size,size,null,timeout.Token);
+                        await BoundedTransfer.Copy(input,output,size,size,null,timeout.Token);
                     Verify(path,hash);
                 }
                 return path;

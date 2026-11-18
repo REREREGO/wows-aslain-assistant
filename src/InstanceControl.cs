@@ -4,7 +4,6 @@ using System.IO;
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
 using System.Security.AccessControl;
-using System.Security.Cryptography;
 using System.Security.Principal;
 using System.Text;
 using System.Threading.Tasks;
@@ -62,10 +61,6 @@ namespace AslainAssistant
                 catch(System.ComponentModel.Win32Exception) { }
             }
             return false;
-        }
-        public static string ProfileMutex(string root)
-        {
-            using (var sha = SHA256.Create()) return "Local\\WoWSAslainAssistant-" + BitConverter.ToString(sha.ComputeHash(Encoding.UTF8.GetBytes(Path.GetFullPath(root).ToUpperInvariant()))).Replace("-", "").Substring(0,24);
         }
         public static bool ModInstallerRunning()
         {

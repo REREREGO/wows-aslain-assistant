@@ -265,6 +265,8 @@ namespace AslainAssistant
                 RunPresetTests().GetAwaiter().GetResult();
                 passed += UpdateTests.Run(root).GetAwaiter().GetResult();
                 RunMirrorTests().GetAwaiter().GetResult();
+                RunTransferTests().GetAwaiter().GetResult();
+                RunInstallTests();
                 if (args.Contains("--live"))
                 {
                     using (var client = new OfficialClient())

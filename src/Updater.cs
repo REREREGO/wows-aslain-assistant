@@ -56,42 +56,10 @@ namespace AslainAssistant
                 using (var stream = await response.Content.ReadAsStreamAsync())
                 using (var buffer = new MemoryStream())
                 {
-                    await CopyBounded(stream, buffer, 8 * 1024 * 1024, 0, null, timeout.Token);
+                    await BoundedTransfer.Copy(stream, buffer, 8 * 1024 * 1024, 0, null, timeout.Token);
                     return Release.Parse(System.Text.Encoding.UTF8.GetString(buffer.ToArray()));
                 }
             }
-        }
-        static async Task CopyBounded(Stream source, Stream destination, long maximum, long expected, IProgress<Transfer> progress, CancellationToken token)
-        {
-            byte[] buffer = new byte[81920]; long total = 0; int read;
-            var watch = Stopwatch.StartNew();
-            while (true)
-            {
-                using (var idle=CancellationTokenSource.CreateLinkedTokenSource(token))
-                {
-                    // Some .NET Framework response streams ignore cancellation while a read is pending.
-                    var pending=source.ReadAsync(buffer,0,buffer.Length,token);
-                    if (await Task.WhenAny(pending,Task.Delay(TimeSpan.FromSeconds(30),idle.Token)) != pending)
-                    {
-                        source.Dispose();
-                        ObserveReadFailure(pending);
-                        token.ThrowIfCancellationRequested();
-                        throw new OperationCanceledException("下载已连续 30 秒没有收到数据。");
-                    }
-                    idle.Cancel(); read=await pending;
-                }
-                if (read == 0) break;
-                total += read;
-                if (total > maximum) throw new InvalidDataException("服务器返回文件超过大小限制。");
-                await destination.WriteAsync(buffer, 0, read, token);
-                if (progress != null && watch.ElapsedMilliseconds > 200) { progress.Report(new Transfer { Received = total, Total = expected }); watch.Restart(); }
-            }
-            if (expected > 0 && total != expected) throw new InvalidDataException("下载不完整，请重试。");
-            if (progress != null) progress.Report(new Transfer { Received = total, Total = expected });
-        }
-        static void ObserveReadFailure(Task pending)
-        {
-            pending.ContinueWith(t=>{var ignored=t.Exception;},TaskContinuationOptions.OnlyOnFaulted);
         }
         public static void Verify(string file, string expectedHash)
         {
@@ -143,7 +111,7 @@ namespace AslainAssistant
                     {
                         long size = response.Content.Headers.ContentLength ?? 0;
                         if (size > 1024L * 1024 * 1024) throw new InvalidDataException("安装包超过 1 GB 限制。");
-                        await CopyBounded(source, file, 1024L * 1024 * 1024, size, progress, timeout.Token);
+                        await BoundedTransfer.Copy(source, file, 1024L * 1024 * 1024, size, progress, timeout.Token);
                     }
                     await Task.Run(() => Verify(part, release.Sha256), timeout.Token);
                     if (release.Size > 0 && new FileInfo(part).Length != release.Size) throw new InvalidDataException("安装包大小与版本清单不匹配。");

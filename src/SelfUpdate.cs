@@ -125,16 +125,9 @@ namespace AslainAssistant
             using (var response = await Get(url,binary,token))
             using (var input = await response.Content.ReadAsStreamAsync())
             {
-                long expected=response.Content.Headers.ContentLength ?? 0, total=0;
+                long expected=response.Content.Headers.ContentLength ?? 0;
                 if (expected > limit) throw new InvalidDataException("助手更新文件超过大小限制。");
-                byte[] bytes = new byte[81920]; int read;
-                while ((read=await input.ReadAsync(bytes,0,bytes.Length,token)) > 0)
-                {
-                    total+=read; if(total>limit) throw new InvalidDataException("助手更新文件超过大小限制。");
-                    await output.WriteAsync(bytes,0,read,token);
-                    if(progress!=null) progress.Report(new Transfer {Received=total,Total=expected});
-                }
-                if(expected>0 && expected!=total) throw new InvalidDataException("助手更新下载不完整。");
+                await BoundedTransfer.Copy(input,output,limit,expected,progress,token);
             }
         }
         public async Task<AssistantRelease> Latest(CancellationToken token)

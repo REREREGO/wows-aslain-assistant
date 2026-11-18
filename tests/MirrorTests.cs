@@ -107,8 +107,7 @@ namespace AslainAssistant
                 });
                 await TestAsync("cancellation also closes stalled Framework streams that ignore tokens",async()=>{
                     using(var input=new StalledMirrorStream()) using(var output=new MemoryStream()) using(var stop=new CancellationTokenSource(60)) {
-                        var method=typeof(OfficialClient).GetMethod("CopyBounded",System.Reflection.BindingFlags.NonPublic|System.Reflection.BindingFlags.Static);
-                        var work=(Task)method.Invoke(null,new object[]{input,output,2048L,0L,null,stop.Token});
+                        var work=BoundedTransfer.Copy(input,output,2048L,0L,null,stop.Token);
                         Assert(await Task.WhenAny(work,Task.Delay(2000))==work,"stalled stream ignored cancellation");
                         await Reject(()=>work,"canceled stream completed successfully");
                         Assert(input.Closed,"stalled socket was not released");

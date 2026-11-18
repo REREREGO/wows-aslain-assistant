@@ -6,11 +6,11 @@
 
 选一次插件，以后让它定期检查、下载并安装。国服、外服分开管理；也能直接导入群友的配置，省得对着截图挨个勾选。
 
-**[下载 1.0.1 安装包](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.1/AslainAssistant.Setup.1.0.1.exe)** · [更新说明](https://github.com/REREREGO/wows-aslain-assistant/releases/tag/v1.0.1) · [反馈问题](https://github.com/REREREGO/wows-aslain-assistant/issues)
+**[下载 1.0.2 安装包](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.2/AslainAssistant.Setup.1.0.2.exe)** · [更新说明](https://github.com/REREREGO/wows-aslain-assistant/releases/tag/v1.0.2) · [反馈问题](https://github.com/REREREGO/wows-aslain-assistant/issues)
 
 适用于 Windows，需要 .NET Framework 4.8。更新的是阿斯兰**经典模组包**。
 
-![1.0.1 更新概览](docs/images/dashboard-light.jpg)
+![1.0.2 更新概览](docs/images/dashboard-light.jpg)
 
 ## 第一次用
 
@@ -60,7 +60,7 @@
 
 左下角也可以切换深浅主题，重启后会记住。
 
-![1.0.1 深色界面](docs/images/dashboard-dark.jpg)
+![1.0.2 深色界面](docs/images/dashboard-dark.jpg)
 
 ## 装完发现少了插件
 
@@ -79,7 +79,7 @@
 .\build.ps1 -OutputDirectory build
 ```
 
-[发布说明](docs/RELEASING.md) · [国内镜像维护](docs/MIRRORS.md) · [AntdUI 许可证](vendor/AntdUI/2.4.19/LICENSE.txt)
+[发布说明](docs/RELEASING.md) · [测试说明](docs/TESTING.md) · [国内镜像维护](docs/MIRRORS.md) · [AntdUI 许可证](vendor/AntdUI/2.4.19/LICENSE.txt)
 
 </details>
 
@@ -101,6 +101,7 @@ made with GPT 6 Astra。
 
 | 版本 | 主要变化 | 安装包 |
 | --- | --- | --- |
-| **1.0.1（最新）** | 国内版本源与下载镜像、助手版本自检 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.1/AslainAssistant.Setup.1.0.1.exe) |
+| **1.0.2（最新）** | 修复助手下载卡住时取消不生效，统一下载超时处理 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.2/AslainAssistant.Setup.1.0.2.exe) |
+| 1.0.1 | 国内版本源与下载镜像、助手版本自检 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.1/AslainAssistant.Setup.1.0.1.exe) |
 
 [查看全部发行记录](https://github.com/REREREGO/wows-aslain-assistant/releases)

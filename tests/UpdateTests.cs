@@ -71,6 +71,24 @@ namespace AslainAssistant
                 var fallback=new FakeHttp {Respond=r=>r.RequestUri.Host=="github.com" ? new HttpResponseMessage(HttpStatusCode.ServiceUnavailable) : new HttpResponseMessage(HttpStatusCode.OK){Content=new StringContent(signed)}};
                 using(var client=new AssistantUpdateClient(fallback,publicKey)) Assert((await client.Latest(CancellationToken.None)).Sha256==hash && fallback.Calls==2,"Feed fallback failed");
                 Pass("backup metadata endpoint works when the primary endpoint is unavailable");
+                foreach(bool metadata in new[]{true,false})
+                {
+                    using(var input=new StalledMirrorStream())
+                    using(var stop=new CancellationTokenSource(60))
+                    {
+                        var stalledHttp=new FakeHttp {Respond=r=>new HttpResponseMessage(HttpStatusCode.OK){Content=new StreamContent(input)}};
+                        using(var client=new AssistantUpdateClient(stalledHttp,publicKey))
+                        {
+                            Task work=metadata ? (Task)client.Latest(stop.Token) : client.Download(release,Path.Combine(root,"self-stalled"),null,stop.Token);
+                            Assert(await Task.WhenAny(work,Task.Delay(2000))==work,"Assistant stream ignored cancellation after receiving headers");
+                            bool canceled=false;
+                            try {await work;} catch(OperationCanceledException) {canceled=true;}
+                            Assert(canceled && input.Closed && stalledHttp.Calls==1,"Canceled transfer leaked its stream or tried another source");
+                            if(!metadata) Assert(Directory.GetFiles(Path.Combine(root,"self-stalled")).Length==0,"Canceled installer left partial files");
+                        }
+                    }
+                    Pass(metadata ? "stalled assistant metadata responds to cancellation without fallback" : "stalled assistant installer cancels and removes partial files");
+                }
                 string checkRoot=Path.Combine(root,"version-check");
                 new AssistantUpdateSettings {Enabled=false,AttemptedVersion="keep-attempt"}.Save(checkRoot);
                 var checkedRelease=Storage.Json().Deserialize<AssistantRelease>(Storage.Json().Serialize(release));

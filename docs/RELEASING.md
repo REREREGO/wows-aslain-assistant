@@ -1,6 +1,6 @@
 # 发布新版助手
 
-只有用户明确要求“发布”时才执行本文的发布步骤。日常开发仅在本地构建、测试和安装，不递增版本号、不推送仓库，也不生成或上传发布更新清单。用户已于 2026-11-19 授权正式发布 1.0.1，包括源码、README、安装包与更新清单；海猴雷达继续留在本地，不进入本次发布。此授权不延续到后续迭代。
+只有用户明确要求“发布”时才执行本文的发布步骤。日常开发仅在本地构建、测试和安装，不递增版本号、不推送仓库，也不生成或上传发布更新清单。用户已于 2026-11-19 授权检查冗余、充分测试并更新 GitHub 应用，本次发布 1.0.2，包括源码、README、安装包与更新清单；海猴雷达继续留在本地，不进入本次发布。此授权不延续到后续迭代。
 
 用户单独要求推送到 GitHub 时，只同步当前源码，保持版本号，不自动发布安装包。
 
@@ -16,7 +16,7 @@
 
 1. 确认 `src/AssemblyInfo.cs` 使用用户指定的版本号，不自行递增；更新 README、实际界面截图及文末的全部版本下载列表。
 2. 构建正式文件，运行业务测试和界面测试。
-3. 在 GitHub 创建对应标签的草稿 Release，上传带版本号的安装包，例如 `AslainAssistant.Setup.1.0.1.exe`。构建脚本按程序集版本自动生成该文件；不带版本号的副本仅供本地脚本使用。
+3. 在 GitHub 创建对应标签的草稿 Release，上传带版本号的安装包，例如 `AslainAssistant.Setup.1.0.2.exe`。构建脚本按程序集版本自动生成该文件；不带版本号的副本仅供本地脚本使用。
 4. 用 `tools/Sign-Release.ps1` 生成 `updates/latest.json`，下载地址必须指向这次 Release 的安装器。可同时填入该资产的 GitHub API 下载地址作为备用。
 5. 将 `latest.json` 作为 Release 资产上传，并提交到仓库的 `updates/latest.json`。
 6. 确认安装器与签名对应后，将草稿 Release 发布并明确设为 Latest（API `make_latest: "true"`）。1.0.1 的编号低于历史 1.4.x，不能依赖按版本号推断最新版。
@@ -28,7 +28,7 @@
 .\build.ps1 -OutputDirectory release
 .\release\AslainAssistant.Tests.exe
 .\release\AslainAssistant.UiTests.exe
-.\tools\Sign-Release.ps1 -Version 1.0.1
+.\tools\Sign-Release.ps1 -Version 1.0.2
 ```
 
 正式发布时，不要重用已发布的版本号替换不同的安装包。本地开发可以反复构建并覆盖安装同一版本，无需签发更新清单。
