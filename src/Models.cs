@@ -126,6 +126,7 @@ namespace AslainAssistant
         public bool AutoUpdate { get; set; }
         public int CheckHours { get; set; }
         public Preset Preset { get; set; }
+        public bool PendingPreset { get; set; }
         public string FailedRelease { get; set; }
         public string LastCheck { get; set; }
         public string PendingRun { get; set; }
@@ -215,6 +216,7 @@ namespace AslainAssistant
             }
             else throw new InvalidDataException("仅支持 .json、.inf 或阿斯兰导出的 .reg 配置。");
             result.AutoUpdate = false; // Import never starts a background install or registers a login item.
+            result.PendingPreset = result.Preset != null;
             result.FailedRelease = "";
             result.PendingRun = "";
             if (result.Preset != null) result.Preset.Source = "导入：" + Path.GetFileName(file);

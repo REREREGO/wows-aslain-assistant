@@ -26,7 +26,6 @@ namespace AslainAssistant
         readonly Ant.Switch automatic = new Ant.Switch(), startup = new Ant.Switch();
         readonly Ant.InputNumber hours = new Ant.InputNumber();
         readonly Ant.Progress progress = new Ant.Progress();
-        readonly Ant.Tag serverTag = new Ant.Tag();
         readonly Ant.Tabs pages = new Ant.Tabs();
         readonly Ant.Segmented themeMode = new Ant.Segmented();
         readonly Ant.Switch assistantAutomatic = new Ant.Switch();
@@ -49,6 +48,7 @@ namespace AslainAssistant
         Func<List<Settings>,CancellationToken,Task<List<ClientSnapshot>>> loadClients = LoadStartupClients;
         bool confirmingDelete;
         Func<Settings,bool> confirmDelete;
+        Action<string,string> warnGameRunning;
         DateTimeOffset lastLocalPoll = DateTimeOffset.MinValue;
 
         public Dashboard(bool startHidden,bool ownsInstance=false)
@@ -66,6 +66,7 @@ namespace AslainAssistant
             StartPosition = FormStartPosition.CenterScreen; Icon = Brand.LoadIcon();
             AutoScaleDimensions = new SizeF(96,96); AutoScaleMode = AutoScaleMode.Dpi;
             confirmDelete = ConfirmClientDeletion;
+            warnGameRunning = ShowGameRunningNotice;
             BuildUi();
             pages.SelectedIndex = preferences.PageIndex;
             pages.SelectedIndexChanged += (s,e)=>Guard(()=>{UiTheme.LayoutVisible(pages); if (!booted) return; preferences.PageIndex = pages.SelectedIndex; preferences.Save(Storage.Root);});
@@ -157,8 +158,8 @@ namespace AslainAssistant
             var main = new Ant.Panel { Dock = DockStyle.Fill, Back = UiTheme.Background, Radius = 0, Padding = new Padding(24,14,24,14) };
             UiTheme.Bind(main,()=>main.Back = UiTheme.Background);
             var selection = new Ant.Panel { Height = 60, Dock = DockStyle.Top, Back = Color.Transparent };
-            selectedLabel.Dock = DockStyle.Fill; serverTag.Dock = DockStyle.Right; serverTag.Width = 95; serverTag.Text = "客户端"; serverTag.Type = Ant.TTypeMini.Primary;
-            selection.Controls.Add(selectedLabel); selection.Controls.Add(serverTag);
+            selectedLabel.Dock = DockStyle.Fill;
+            selection.Controls.Add(selectedLabel);
             var metrics = UiTheme.Grid("33.33% 33.33% 33.34%",Metric("游戏客户端",gameValue,"以当前客户端实际版本为准"),Metric("已安装阿斯兰",installedValue,"插件安装版本"),Metric("官网经典版",latestValue,"检查后显示最新发布"));
             metrics.Dock = DockStyle.Top; metrics.Height = 132;
             pages.Dock = DockStyle.Fill; pages.Gap = 22;

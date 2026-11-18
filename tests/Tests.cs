@@ -23,6 +23,7 @@ namespace AslainAssistant
         public int Calls;
         public int Code;
         public bool WasInteractive;
+        public string InputInf;
         public string LogText = "Installation process succeeded.\nCurrent step: ssDone\nLog closed.";
         public Action Installed;
         public override Task<int> Run(string file, string args)
@@ -31,13 +32,15 @@ namespace AslainAssistant
             string log = Regex.Match(args, "/LOG=\"([^\"]+)\"").Groups[1].Value;
             string output = Regex.Match(args, "/SAVEINF=\"([^\"]+)\"").Groups[1].Value;
             string target = Regex.Match(args, "/DIR=\"([^\"]+)\"").Groups[1].Value;
+            string input = Regex.Match(args, "/LOADINF=\"([^\"]+)\"").Groups[1].Value;
+            InputInf = File.Exists(input) ? File.ReadAllText(input) : "";
             File.WriteAllText(log, "Original Setup EXE: " + file + "\n" + LogText);
-            File.WriteAllText(output, "[Setup]\nDir=" + target + "\nComponents=markers,markers\\speed_indicator\nTasks=install_clean\nLang=cn\n");
+            File.WriteAllText(output, InputInf.Length > 0 ? InputInf : "[Setup]\nDir=" + target + "\nComponents=markers,markers\\speed_indicator\nTasks=install_clean\nLang=cn\n");
             if (Code == 0 && Installed != null) Installed();
             return Task.FromResult(Code);
         }
     }
-    class Tests
+    partial class Tests
     {
         static int passed;
         static string root;
@@ -174,6 +177,7 @@ namespace AslainAssistant
                 using (var engine = new UpdateEngine(settings,new OfficialClient(),new FakeInstaller()))
                 {
                     engine.Game = Local("15.10.0","15.10.0_08"); engine.Game.Path = settings.GamePath;
+                    engine.IsInstallerRunning = ()=>false;
                     engine.RecoverCompletedRun();
                     Assert(settings.IncompleteRelease == "15.10.0_08" && settings.FailedRelease == "15.10.0_08" && engine.Status == "部分模组未安装完整","migration must restore warning without installing");
                 }
@@ -203,6 +207,7 @@ namespace AslainAssistant
                 using (var engine = new UpdateEngine(settings,new OfficialClient(),new FakeInstaller()))
                 {
                     engine.Game = Local("15.10.0","15.10.0_08"); engine.Game.Path = settings.GamePath;
+                    engine.IsInstallerRunning = ()=>false;
                     engine.RecoverCompletedRun();
                     Assert(settings.IncompleteRelease == "" && settings.FailedRelease == "" && engine.Status == "手动安装已核对","completed manual repair supersedes old failure");
                 }
@@ -241,6 +246,7 @@ namespace AslainAssistant
                 }
                 root = Path.GetFullPath(Path.Combine("artifacts", "test-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"))); Directory.CreateDirectory(root); Storage.Root = Path.Combine(root, "data");
                 Run().GetAwaiter().GetResult();
+                RunPresetTests().GetAwaiter().GetResult();
                 passed += UpdateTests.Run(root).GetAwaiter().GetResult();
                 if (args.Contains("--live"))
                 {

@@ -56,8 +56,12 @@ namespace AslainAssistant
                         var matching = found.Where(p=>GameDetector.ClientKind(p)==item.Server && !settings.Any(x=>string.Equals(x.GamePath,p,StringComparison.OrdinalIgnoreCase))).ToList();
                         if(matching.Count == 1)
                         {
-                            item.GamePath = matching[0]; item.Preset = GameDetector.ReadPreset(matching[0]);
-                            if(item.Preset != null) item.Preset.Source = "从已安装阿斯兰读取";
+                            item.GamePath = matching[0];
+                            if(!item.PendingPreset)
+                            {
+                                item.Preset = GameDetector.ReadPreset(matching[0]);
+                                if(item.Preset != null) item.Preset.Source = "从已安装阿斯兰读取";
+                            }
                         }
                     }
                     result.Add(UpdateEngine.ReadSnapshot(item,token));
@@ -78,6 +82,7 @@ namespace AslainAssistant
                 detailLabel.Text = "已下载 " + (transfer.Received / 1048576.0).ToString("F1") + " MB" + (transfer.Total > 0 ? " / " + (transfer.Total / 1048576.0).ToString("F1") + " MB" : "") + " · 下载完成后校验 SHA-256";
             };
             engine.Notify += message => { tray.BalloonTipTitle = settings.Name; tray.BalloonTipText = message; tray.ShowBalloonTip(5000); };
+            engine.InstallationBlocked += message => warnGameRunning(engine.Settings.Name,message);
             var tile = UiTheme.Button("",null,false,"DesktopOutlined"); tile.Height = (int)(72 * AntdUI.Config.Dpi); tile.TextAlign = ContentAlignment.MiddleLeft; tile.TextMultiLine = true; tile.AutoEllipsis = true;
             tile.Click += (s, e) => { selected = engine; Bind(); };
             tiles.Add(engine, tile); clientTiles.Controls.Add(tile); clientTiles.Controls.SetChildIndex(tile,0);
@@ -89,6 +94,11 @@ namespace AslainAssistant
             automatic.Checked = selected != null && selected.Settings.AutoUpdate; hours.Value = selected == null ? 1 : selected.Settings.CheckHours;
             startup.Checked = Startup.Enabled;
             binding = false; progress.Value = 0; progress.Loading = false; RefreshUi();
+        }
+        void ShowGameRunningNotice(string client,string message)
+        {
+            Reveal();
+            UiTheme.Notice(this,"请先关闭游戏",client + "\n\n" + message,AntdUI.TType.Warn);
         }
         void RefreshUi()
         {
@@ -106,7 +116,6 @@ namespace AslainAssistant
                 pair.Value.Type = pair.Key == selected ? AntdUI.TTypeMini.Primary : AntdUI.TTypeMini.Default;
                 pair.Value.Ghost = pair.Key == selected; pair.Value.BorderWidth = pair.Key == selected ? 1 : 0;
             }
-            serverTag.Visible = selected != null;
             if (selected == null)
             {
                 gameValue.Text = installedValue.Text = latestValue.Text = "—";
@@ -123,8 +132,8 @@ namespace AslainAssistant
             installedValue.Text = game == null ? "—" : !game.HasInstallation ? "未安装" : game.Installed == null ? "版本未知" : game.Installed.ToString();
             latestValue.Text = selected.Release == null ? "待检查" : selected.Release.Version.ToString();
             selectedLabel.Text = selected.Settings.Name;
-            serverTag.Text = selected.Settings.Server == "CN" ? "国服" : "外服";
             presetLabel.Text = selected.Settings.Preset == null ? "插件配置 · 首次安装时手动选择，完成后自动保存" : "插件配置 · " + selected.Settings.Preset.Count + " 个选择项（含分类） · " + selected.Settings.Preset.Source;
+            if (selected.Settings.PendingPreset) presetLabel.Text += " · 待应用，点击立即更新安装";
             statusLabel.Text = selected.Status; detailLabel.Text = selected.Detail;
             update.Text = !string.IsNullOrEmpty(selected.Settings.IncompleteRelease) ? "重试安装" : "立即更新";
             statusLabel.ForeColor = string.IsNullOrEmpty(selected.Settings.InstallIssue) ? blue : UiTheme.Warning;
@@ -167,8 +176,11 @@ namespace AslainAssistant
             if (engines.Any(x => x != selected && string.Equals(x.Settings.GamePath, folder, StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("此目录已由另一个客户端配置管理，请切换到对应客户端。");
             selected.Settings.GamePath = folder; selected.Settings.AutoUpdate = false; selected.Settings.FailedRelease = ""; selected.Settings.PendingRun = "";
             selected.Settings.IncompleteRelease = ""; selected.Settings.InstallIssue = "";
-            selected.Settings.Preset = GameDetector.ReadPreset(folder);
-            if (selected.Settings.Preset != null) selected.Settings.Preset.Source = "从该游戏目录读取";
+            if (!selected.Settings.PendingPreset)
+            {
+                selected.Settings.Preset = GameDetector.ReadPreset(folder);
+                if (selected.Settings.Preset != null) selected.Settings.Preset.Source = "从该游戏目录读取";
+            }
             selected.RefreshLocal(); selected.Status = "目录已就绪"; selected.Detail = "可以仅检查版本，或开启自动更新。";
             Storage.Save(selected.Settings); Bind();
         }
@@ -192,7 +204,7 @@ namespace AslainAssistant
         {
             var preset = GameDetector.ReadPreset(selected.Settings.GamePath);
             if (preset == null) throw new InvalidDataException("游戏目录中没有可读取的配置，请首次手动选择插件或导入配置。");
-            preset.Source = "从已安装阿斯兰读取"; selected.Settings.Preset = preset; Storage.Save(selected.Settings); RefreshUi(); AddLog("已读取 " + preset.Count + " 个插件选择项。");
+            preset.Source = "从已安装阿斯兰读取"; selected.Settings.Preset = preset; selected.Settings.PendingPreset = false; selected.Settings.PendingRun = ""; Storage.Save(selected.Settings); RefreshUi(); AddLog("已读取 " + preset.Count + " 个插件选择项。");
         }
         void ShowRepairAdvice()
         {
@@ -236,7 +248,7 @@ namespace AslainAssistant
                     if (engines.Any(x => x != selected && !string.IsNullOrEmpty(settings.GamePath) && string.Equals(x.Settings.GamePath, settings.GamePath, StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("备份中的目录已由另一个客户端管理。");
                     Storage.Save(settings); selected.Settings = settings;
                     if (GameDetector.IsGameFolder(settings.GamePath)) selected.RefreshLocal();
-                    selected.Status = "配置导入完成"; selected.Detail = "已保留本机客户端目录。请确认配置后开启自动更新，或点击「立即更新」。"; Bind(); AddLog("配置已导入；自动更新暂停，等待你启用。原配置已保存为 .bak。");
+                    selected.Status = settings.PendingPreset ? "配置待应用" : "配置导入完成"; selected.Detail = "已保留本机客户端目录。点击「立即更新」应用插件选择，即使阿斯兰已是最新版。"; Bind(); AddLog("配置已导入；自动更新暂停，点击「立即更新」应用。原配置已保存为 .bak。");
                 }
         }
         void Export()

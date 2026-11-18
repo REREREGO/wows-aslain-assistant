@@ -35,6 +35,15 @@ namespace AslainAssistant
             }
         }
         static Settings Read(string id) { return Storage.Json().Deserialize<Settings>(File.ReadAllText(Path.Combine(Storage.Root,"profiles",id + ".json"))); }
+        static Control FindControl(Control parent,string text)
+        {
+            foreach(Control child in parent.Controls)
+            {
+                if(child.Text==text) return child;
+                var found=FindControl(child,text); if(found!=null) return found;
+            }
+            return null;
+        }
         static void Run(Dashboard form)
         {
             var pages = (AntdUI.Tabs)Field(form,"pages");
@@ -43,6 +52,36 @@ namespace AslainAssistant
             first.Game = new GameState { GameVersion = "15.10.0", HasInstallation = true, Installed = PackVersion.Parse("15.10.0_08") };
             first.Release = new Release { Version = PackVersion.Parse("15.10.0_09") };
             Call(form,"RefreshUi");
+            Test("manual install and reinstall route running-game warnings to the modal in both themes",()=>
+            {
+                var warning=Field(form,"warnGameRunning"); var originalProbe=first.IsGameRunning;
+                int shown=0;
+                try
+                {
+                    first.IsGameRunning=()=>true;
+                    typeof(Dashboard).GetField("warnGameRunning",Flags).SetValue(form,new Action<string,string>((client,message)=>
+                    {
+                        Assert(client==first.Settings.Name && message.Contains("关闭游戏") && message.Contains("重试"),"Wrong game warning or client");
+                        Assert(first.Busy && !((AntdUI.Button)Field(form,"update")).Enabled,"An update can overlap the warning");
+                        shown++;
+                    }));
+                    foreach(int mode in new[]{1,0})
+                    {
+                        ((AntdUI.Segmented)Field(form,"themeMode")).SelectIndex=mode;
+                        pages.SelectedIndex=0; Application.DoEvents();
+                        typeof(Control).GetMethod("OnClick",Flags).Invoke(Field(form,"update"),new object[]{EventArgs.Empty});
+                        pages.SelectedIndex=2; Application.DoEvents();
+                        var reinstall=FindControl(form,"选择插件 / 重装"); Assert(reinstall!=null,"Missing reinstall action");
+                        typeof(Control).GetMethod("OnClick",Flags).Invoke(reinstall,new object[]{EventArgs.Empty});
+                    }
+                    Assert(shown==4 && !first.Busy,"Actions did not show one warning each or remained locked");
+                }
+                finally
+                {
+                    first.IsGameRunning=originalProbe;
+                    typeof(Dashboard).GetField("warnGameRunning",Flags).SetValue(form,warning);
+                }
+            });
             Test("version numbers fit at normal and minimum window size",()=>
             {
                 foreach (Size size in new[] { form.Size,form.MinimumSize })
