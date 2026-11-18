@@ -40,7 +40,7 @@ namespace AslainAssistant
         readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
         readonly bool background;
         UpdateEngine selected;
-        Ant.Button cancel, update, deleteClient, addClient;
+        Ant.Button cancel, update, deleteClient, addClient, applyPreset;
         Ant.Panel statusCard;
         bool binding, quitting, booted;
         bool loadingClients;
@@ -170,7 +170,7 @@ namespace AslainAssistant
             statusLabel.Height = 34; statusLabel.ForeColor = blue; detailLabel.Height = 68; detailLabel.AutoEllipsis = true;
             progress.Height = 12; progress.Value = 0; progress.Radius = 4; progress.Visible = false; UiTheme.Bind(progress,()=>progress.Fill = blue);
             var statusContent = UiTheme.Column(statusLabel,detailLabel,progress); statusContent.Gap = 8; statusContent.AutoScroll = false; statusCard.Controls.Add(statusContent);
-            update = ClientButton("立即更新",()=>{var task=RunSelected(true,false);},true,"CloudDownloadOutlined"); update.Width = 148;
+            update = ClientButton("使用历史配置更新",()=>{var task=RunSelected(true,false);},true,"CloudDownloadOutlined"); update.Width = 216;
             cancel = Button("取消下载",()=>{var active=engines.FirstOrDefault(x=>x.Busy);if(active!=null)active.Cancel();},false,"CloseOutlined"); mutable.Remove(cancel);
             var primaryActions = UiTheme.Actions(update,ClientButton("仅检查版本",()=>{var task=RunSelected(false,false);},false,"SyncOutlined"),ClientButton("查看处理方案",ShowRepairAdvice,false,"QuestionCircleOutlined"),cancel);
             var ruleText = TextLabel("同一游戏版本：沿用插件选择自动安装更新。\n游戏版本不匹配：先缓存新版，等待客户端更新后再安装。\n游戏运行中：等待游戏退出。",90);
@@ -197,9 +197,11 @@ namespace AslainAssistant
             Page("客户端设置","SettingOutlined",UiTheme.Column(path,autoCard,startupCard,assistantCard));
 
             presetLabel.Height = 64;
-            var presets = Card("当前插件预设",208,presetLabel,UiTheme.Actions(Button("读取已装配置",ReadInstalledPreset,false,"ReloadOutlined"),Button("导入配置",Import,false,"ImportOutlined"),Button("导出配置",Export,false,"ExportOutlined")));
+            applyPreset = ClientButton("使用该配置更新",()=>{var task=ApplyImportedPreset();},true,"CloudDownloadOutlined");
+            applyPreset.Width = 184; applyPreset.Visible = false;
+            var presets = Card("当前插件预设",208,presetLabel,UiTheme.Actions(applyPreset,Button("读取已装配置",ReadInstalledPreset,false,"ReloadOutlined"),Button("导入配置",Import,false,"ImportOutlined"),Button("导出配置",Export,false,"ExportOutlined")));
             var chooseButton = Button("选择插件 / 重装",()=>{var task=RunSelected(true,true);},true,"AppstoreOutlined"); chooseButton.Width = 174;
-            var choose = Card("管理插件选择",196,TextLabel("首次在阿斯兰安装器中选择插件；之后更新会沿用此客户端的预设。",48),UiTheme.Actions(chooseButton));
+            var choose = Card("管理插件选择",196,TextLabel("按历史安装配置打开阿斯兰，手动调整插件；导入预设请用上方「使用该配置更新」。",48),UiTheme.Actions(chooseButton));
             clientControls.Add(presets); clientControls.Add(choose);
             var format = Card("配置文件",132,TextLabel("支持 JSON、INF 和阿斯兰 REG。每个客户端分别保存目录、插件和检查频率。",48));
             Page("插件配置","AppstoreOutlined",UiTheme.Column(presets,choose,format));

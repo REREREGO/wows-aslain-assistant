@@ -57,11 +57,8 @@ namespace AslainAssistant
                         if(matching.Count == 1)
                         {
                             item.GamePath = matching[0];
-                            if(!item.PendingPreset)
-                            {
-                                item.Preset = GameDetector.ReadPreset(matching[0]);
-                                if(item.Preset != null) item.Preset.Source = "从已安装阿斯兰读取";
-                            }
+                            item.Preset = GameDetector.ReadPreset(matching[0]);
+                            if(item.Preset != null) item.Preset.Source = "从已安装阿斯兰读取";
                         }
                     }
                     result.Add(UpdateEngine.ReadSnapshot(item,token));
@@ -105,6 +102,7 @@ namespace AslainAssistant
             bool busy = engines.Any(x => x.Busy) || selfUpdate.Busy || shutdownForUpdate || confirmingDelete;
             foreach (Control control in mutable) control.Enabled = !busy && booted;
             foreach (Control control in clientControls) control.Enabled = selected != null && !busy && booted;
+            applyPreset.Visible = selected != null && selected.Settings.ImportedPreset != null;
             cancel.Enabled = engines.Any(x => x.Busy) && !engines.Any(x => x.Installing);
             if(selfUpdate.Busy || shutdownForUpdate || confirmingDelete) cancel.Enabled=false;
             assistantAutomatic.Enabled=selfUpdate.Allowed && !busy;
@@ -123,7 +121,7 @@ namespace AslainAssistant
                 presetLabel.Text = "添加客户端后，可以读取或导入插件配置。";
                 statusLabel.Text = "还没有客户端"; statusLabel.ForeColor = blue;
                 detailLabel.Text = "点击左下角「添加客户端」，选择游戏目录后开始使用。";
-                update.Text = "立即更新"; progress.Visible = false; progress.Loading = false; progress.Value = 0;
+                update.Text = "使用历史配置更新"; progress.Visible = false; progress.Loading = false; progress.Value = 0;
                 scheduleLabel.Text = "暂无客户端 · 可随时添加国服或外服客户端";
                 return;
             }
@@ -132,10 +130,11 @@ namespace AslainAssistant
             installedValue.Text = game == null ? "—" : !game.HasInstallation ? "未安装" : game.Installed == null ? "版本未知" : game.Installed.ToString();
             latestValue.Text = selected.Release == null ? "待检查" : selected.Release.Version.ToString();
             selectedLabel.Text = selected.Settings.Name;
-            presetLabel.Text = selected.Settings.Preset == null ? "插件配置 · 首次安装时手动选择，完成后自动保存" : "插件配置 · " + selected.Settings.Preset.Count + " 个选择项（含分类） · " + selected.Settings.Preset.Source;
-            if (selected.Settings.PendingPreset) presetLabel.Text += " · 待应用，点击立即更新安装";
+            var shownPreset = selected.Settings.ImportedPreset ?? selected.Settings.Preset;
+            presetLabel.Text = shownPreset == null ? "插件配置 · 首次安装时手动选择，完成后自动保存" : "插件配置 · " + shownPreset.Count + " 个选择项（含分类） · " + shownPreset.Source;
+            if (selected.Settings.ImportedPreset != null) presetLabel.Text += " · 待应用，点击「使用该配置更新」安装";
             statusLabel.Text = selected.Status; detailLabel.Text = selected.Detail;
-            update.Text = !string.IsNullOrEmpty(selected.Settings.IncompleteRelease) ? "重试安装" : "立即更新";
+            update.Text = "使用历史配置更新";
             statusLabel.ForeColor = string.IsNullOrEmpty(selected.Settings.InstallIssue) ? blue : UiTheme.Warning;
             progress.Visible = selected.Busy && !selected.Installing;
             if (!busy) { progress.Loading = false; progress.Value = 0; }
@@ -176,11 +175,9 @@ namespace AslainAssistant
             if (engines.Any(x => x != selected && string.Equals(x.Settings.GamePath, folder, StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("此目录已由另一个客户端配置管理，请切换到对应客户端。");
             selected.Settings.GamePath = folder; selected.Settings.AutoUpdate = false; selected.Settings.FailedRelease = ""; selected.Settings.PendingRun = "";
             selected.Settings.IncompleteRelease = ""; selected.Settings.InstallIssue = "";
-            if (!selected.Settings.PendingPreset)
-            {
-                selected.Settings.Preset = GameDetector.ReadPreset(folder);
-                if (selected.Settings.Preset != null) selected.Settings.Preset.Source = "从该游戏目录读取";
-            }
+            selected.Settings.Preset = GameDetector.ReadPreset(folder);
+            selected.Settings.PendingRunUsesImportedPreset = false;
+            if (selected.Settings.Preset != null) selected.Settings.Preset.Source = "从该游戏目录读取";
             selected.RefreshLocal(); selected.Status = "目录已就绪"; selected.Detail = "可以仅检查版本，或开启自动更新。";
             Storage.Save(selected.Settings); Bind();
         }
@@ -204,7 +201,9 @@ namespace AslainAssistant
         {
             var preset = GameDetector.ReadPreset(selected.Settings.GamePath);
             if (preset == null) throw new InvalidDataException("游戏目录中没有可读取的配置，请首次手动选择插件或导入配置。");
-            preset.Source = "从已安装阿斯兰读取"; selected.Settings.Preset = preset; selected.Settings.PendingPreset = false; selected.Settings.PendingRun = ""; Storage.Save(selected.Settings); RefreshUi(); AddLog("已读取 " + preset.Count + " 个插件选择项。");
+            preset.Source = "从已安装阿斯兰读取"; selected.Settings.Preset = preset;
+            selected.Settings.ImportedPreset = null; selected.Settings.PendingPreset = false; selected.Settings.PendingRun = ""; selected.Settings.PendingRunUsesImportedPreset = false;
+            Storage.Save(selected.Settings); RefreshUi(); AddLog("已读取 " + preset.Count + " 个插件选择项。");
         }
         void ShowRepairAdvice()
         {
@@ -242,22 +241,27 @@ namespace AslainAssistant
         void Import()
         {
             using (var dialog = new OpenFileDialog { Title = "导入到「" + selected.Settings.Name + "」", Filter = "阿斯兰配置 (*.json;*.inf;*.reg)|*.json;*.inf;*.reg", Multiselect = false })
-                if (dialog.ShowDialog(this) == DialogResult.OK)
-                {
-                    var settings = Storage.Import(dialog.FileName, selected.Settings);
-                    if (engines.Any(x => x != selected && !string.IsNullOrEmpty(settings.GamePath) && string.Equals(x.Settings.GamePath, settings.GamePath, StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("备份中的目录已由另一个客户端管理。");
-                    Storage.Save(settings); selected.Settings = settings;
-                    if (GameDetector.IsGameFolder(settings.GamePath)) selected.RefreshLocal();
-                    selected.Status = settings.PendingPreset ? "配置待应用" : "配置导入完成"; selected.Detail = "已保留本机客户端目录。点击「立即更新」应用插件选择，即使阿斯兰已是最新版。"; Bind(); AddLog("配置已导入；自动更新暂停，点击「立即更新」应用。原配置已保存为 .bak。");
-                }
+                if (dialog.ShowDialog(this) == DialogResult.OK) ImportPreset(dialog.FileName);
+        }
+        void ImportPreset(string file)
+        {
+            var settings = Storage.Import(file, selected.Settings);
+            if (engines.Any(x => x != selected && !string.IsNullOrEmpty(settings.GamePath) && string.Equals(x.Settings.GamePath, settings.GamePath, StringComparison.OrdinalIgnoreCase))) throw new InvalidDataException("备份中的目录已由另一个客户端管理。");
+            Storage.Save(settings); selected.Settings = settings;
+            if (GameDetector.IsGameFolder(settings.GamePath)) selected.RefreshLocal();
+            selected.Status = settings.PendingPreset ? "配置待应用" : "配置导入完成";
+            selected.Detail = settings.PendingPreset ? "点击本页「使用该配置更新」应用导入预设；更新概览的「使用历史配置更新」沿用历史安装配置。" : "文件中没有插件预设，已保留历史安装配置。";
+            Bind(); UiTheme.LayoutVisible(pages);
+            AddLog("配置已导入；自动更新暂停。" + selected.Detail);
         }
         void Export()
         {
             using (var dialog = new SaveFileDialog { Title = "导出客户端配置", FileName = selected.Settings.Name + "-Aslain.json", Filter = "助手完整配置 (*.json)|*.json|阿斯兰插件选择 (*.inf)|*.inf", AddExtension = true })
                 if (dialog.ShowDialog(this) == DialogResult.OK)
                 {
-                    if (dialog.FilterIndex == 2 && selected.Settings.Preset == null) throw new InvalidDataException("尚未保存插件选择，请先完成首次安装或读取已装配置。");
-                    string text = dialog.FilterIndex == 2 ? selected.Settings.Preset.ToInf("") : Storage.Export(selected.Settings);
+                    var preset = selected.Settings.ImportedPreset ?? selected.Settings.Preset;
+                    if (dialog.FilterIndex == 2 && preset == null) throw new InvalidDataException("尚未保存插件选择，请先完成首次安装或读取已装配置。");
+                    string text = dialog.FilterIndex == 2 ? preset.ToInf("") : Storage.Export(selected.Settings);
                     File.WriteAllText(dialog.FileName, text, dialog.FilterIndex == 2 ? System.Text.Encoding.Unicode : new System.Text.UTF8Encoding(true)); AddLog("已导出配置：" + dialog.FileName);
                 }
         }
@@ -320,6 +324,11 @@ namespace AslainAssistant
         {
             if (!booted || selected == null || engines.Any(x => x.Busy) || selfUpdate.Busy || shutdownForUpdate || confirmingDelete) return;
             await selected.Run(install, interactive, true);
+        }
+        async Task ApplyImportedPreset()
+        {
+            if (!booted || selected == null || selected.Settings.ImportedPreset == null || engines.Any(x=>x.Busy) || selfUpdate.Busy || shutdownForUpdate || confirmingDelete) return;
+            await selected.ApplyImportedPreset();
         }
         async Task CheckAll(bool update)
         {

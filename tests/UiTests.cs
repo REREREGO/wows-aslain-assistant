@@ -82,6 +82,56 @@ namespace AslainAssistant
                     typeof(Dashboard).GetField("warnGameRunning",Flags).SetValue(form,warning);
                 }
             });
+            Test("import action appears on the current client only and uses the game guard in both themes",()=>
+            {
+                var original=first.Settings;
+                var warning=Field(form,"warnGameRunning"); var originalProbe=first.IsGameRunning;
+                var theme=(AntdUI.Segmented)Field(form,"themeMode"); int originalTheme=theme.SelectIndex;
+                Size originalSize=form.Size; int notices=0;
+                try
+                {
+                    pages.SelectedIndex=2; Application.DoEvents();
+                    var apply=(AntdUI.Button)Field(form,"applyPreset");
+                    Assert(!apply.Visible,"Import action appears before an import");
+                    first.Settings=Storage.Json().Deserialize<Settings>(Storage.Json().Serialize(original));
+                    first.Settings.Preset=Preset.FromInf("[Setup]\nComponents=markers\nLang=cn");
+                    string file=Path.Combine(Storage.Root,"friend.inf"); File.WriteAllText(file,"[Setup]\nComponents=camera\nLang=cn");
+                    typeof(Dashboard).GetMethod("ImportPreset",Flags).Invoke(form,new object[]{file}); Application.DoEvents();
+                    Assert(apply.Visible && apply.Enabled && first.Settings.Preset.Components=="markers" && first.Settings.ImportedPreset.Components=="camera","Import did not expose a separate apply action");
+                    Assert(Read(first.Settings.Id).ImportedPreset.Components=="camera","Import did not persist");
+                    typeof(Dashboard).GetField("selected",Flags).SetValue(form,engines[1]); Call(form,"Bind");
+                    Assert(!apply.Visible,"Import action leaked into another client");
+                    typeof(Dashboard).GetField("selected",Flags).SetValue(form,first); Call(form,"Bind");
+                    Assert(apply.Visible,"Returning to the importing client lost the action");
+                    first.IsGameRunning=()=>true;
+                    typeof(Dashboard).GetField("warnGameRunning",Flags).SetValue(form,new Action<string,string>((client,message)=>
+                    {
+                        Assert(client==first.Settings.Name && message.Contains("使用该配置更新") && !apply.Enabled,"Imported action used the wrong warning or remained clickable"); notices++;
+                    }));
+                    foreach(int mode in new[]{1,0})
+                    {
+                        theme.SelectIndex=mode;
+                        foreach(Size size in new[]{originalSize,form.MinimumSize})
+                        {
+                            form.Size=size; Application.DoEvents(); Fits(apply);
+                            foreach(Control peer in apply.Parent.Controls) if(peer.Visible) {Fits(peer); if(peer!=apply) Assert(!apply.Bounds.IntersectsWith(peer.Bounds),"Import actions overlap");}
+                        }
+                        Capture(form,mode==1 ? "import-action-dark.png" : "import-action-light.png");
+                        typeof(Control).GetMethod("OnClick",Flags).Invoke(apply,new object[]{EventArgs.Empty});
+                        Assert(first.Settings.ImportedPreset!=null && apply.Visible && apply.Enabled,"Game guard discarded the preset or left the action disabled");
+                    }
+                    Assert(notices==2,"Apply action did not reach the running-game warning");
+                    first.Settings.Preset=first.Settings.ImportedPreset; first.Settings.ImportedPreset=null; first.Settings.PendingPreset=false;
+                    Call(form,"RefreshUi"); Assert(!apply.Visible,"Apply action remained after completion");
+                }
+                finally
+                {
+                    first.Settings=original; Storage.Save(original); first.IsGameRunning=originalProbe;
+                    typeof(Dashboard).GetField("warnGameRunning",Flags).SetValue(form,warning);
+                    typeof(Dashboard).GetField("selected",Flags).SetValue(form,first);
+                    form.Size=originalSize; theme.SelectIndex=originalTheme; Call(form,"Bind");
+                }
+            });
             Test("version numbers fit at normal and minimum window size",()=>
             {
                 foreach (Size size in new[] { form.Size,form.MinimumSize })

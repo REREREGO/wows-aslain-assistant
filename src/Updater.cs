@@ -222,7 +222,22 @@ namespace AslainAssistant
             if (Changed != null) Changed();
             if (Log != null) Log(status + " · " + detail);
         }
-        public void RefreshLocal() { Game = InspectGame(Settings.GamePath); if (!Installing) RecoverCompletedRun(); if (Changed != null) Changed(); }
+        public void RefreshLocal()
+        {
+            Game = InspectGame(Settings.GamePath);
+            if (!Installing)
+            {
+                if (Settings.Preset == null && Settings.ImportedPreset != null && Game != null && GameDetector.IsGameFolder(Game.Path))
+                    Settings.Preset = GameDetector.ReadPreset(Game.Path);
+                RecoverCompletedRun();
+            }
+            if (Changed != null) Changed();
+        }
+        void SaveInstalledPreset(Preset saved, bool imported, bool complete)
+        {
+            if (saved != null && (!imported || complete)) Settings.Preset = saved;
+            if (imported && complete) { Settings.ImportedPreset = null; Settings.PendingPreset = false; }
+        }
         public void RecoverCompletedRun()
         {
             if (Game == null || Game.Installed == null) return;
@@ -251,8 +266,8 @@ namespace AslainAssistant
                 if (recover)
                 {
                     var preset = Preset.FromInf(text); preset.Source = "从已完成的安装恢复";
-                    Settings.Preset = preset; Settings.FailedRelease = ""; Settings.PendingRun = "";
-                    if (!report.Incomplete) Settings.PendingPreset = false;
+                    SaveInstalledPreset(preset,Settings.PendingRunUsesImportedPreset,!report.Incomplete);
+                    Settings.FailedRelease = ""; Settings.PendingRun = ""; Settings.PendingRunUsesImportedPreset = false;
                 }
                 ApplyReport(report, Game.Installed.FileTag); Storage.Save(Settings);
                 Status = report.Incomplete ? "部分模组未安装完整" : report.FailedScripts.Count > 0 ? "插件脚本需要检查" : "已核对安装结果";
@@ -305,26 +320,33 @@ namespace AslainAssistant
             if (report.Incomplete) Settings.FailedRelease = release;
         }
         public void Cancel() { if (!Installing && cancellation != null) cancellation.Cancel(); }
-        bool DeferForRunningGame(bool manual)
+        bool DeferForRunningGame(bool manual, string action)
         {
             if (!IsGameRunning()) return false;
-            string message = manual ? "检测到战舰世界正在运行。请先关闭游戏，再点击「立即更新」或「选择插件 / 重装」重试。当前未启动安装，插件配置已保留。"
+            string message = manual ? "检测到战舰世界正在运行。请先关闭游戏，再点击「" + action + "」重试。当前未启动安装，插件配置已保留。"
                 : "检测到战舰世界正在运行，1 分钟后重试。";
             if (!manual) NextCheck = DateTimeOffset.Now.AddMinutes(1);
             State("等待游戏退出",message);
             if (manual && InstallationBlocked != null) InstallationBlocked(message);
             return true;
         }
-        public async Task Run(bool install, bool interactive, bool manual)
+        public Task Run(bool install, bool interactive, bool manual) { return Run(install,interactive,manual,false); }
+        public Task ApplyImportedPreset() { return Run(true,false,true,true); }
+        async Task Run(bool install, bool interactive, bool manual, bool applyImported)
         {
             if (Busy) return;
             Busy = true; WaitingForNetwork = false; cancellation = new CancellationTokenSource();
             NextCheck = DateTimeOffset.Now.AddHours(Settings.CheckHours);
             try
             {
-                if (install && manual && DeferForRunningGame(true)) return;
+                if (applyImported && Settings.ImportedPreset == null) { State("没有待应用的预设","请先在插件配置页导入配置。"); return; }
+                string action = applyImported ? "使用该配置更新" : interactive ? "选择插件 / 重装" : "使用历史配置更新";
+                if (install && manual && DeferForRunningGame(true,action)) return;
                 State("检查本地安装", "读取游戏版本与阿斯兰安装记录…");
                 RefreshLocal();
+                if (applyImported && Settings.ImportedPreset == null) { State("配置已应用","已核对上次安装结果，无需重复安装。"); return; }
+                if (install && !interactive && !applyImported && Settings.ImportedPreset != null && Settings.Preset == null)
+                { State("尚无历史安装配置","请在插件配置页点击「使用该配置更新」安装已导入的预设。"); return; }
                 if (!NetworkAvailable()) { NetworkFailure("系统未检测到可用网络连接。",manual); return; }
                 State("查询官网版本", "正在连接 aslain.com…");
                 Release = await Client.Latest(cancellation.Token);
@@ -343,11 +365,11 @@ namespace AslainAssistant
                 if (decision == UpdateDecision.NewerInstalled) { State("本地版本更高", "官网当前发布的版本更旧，已保留本地版本。"); return; }
                 string releaseKey = Release.Version.FileTag;
                 bool retry = Settings.FailedRelease == releaseKey || Settings.IncompleteRelease == releaseKey;
-                if (retry && (!manual || !install)) { State(Settings.IncompleteRelease == releaseKey ? "部分模组未安装完整" : "需要处理上次安装", string.IsNullOrEmpty(Settings.InstallIssue) ? "此版本上次安装失败或被取消。点击「立即更新」重试；不会自动反复安装。" : Settings.InstallIssue); return; }
-                if (decision == UpdateDecision.Current && !interactive && !retry && !Settings.PendingPreset) { State(string.IsNullOrEmpty(Settings.InstallIssue) ? "已是最新版本" : "版本最新，插件需要检查", string.IsNullOrEmpty(Settings.InstallIssue) ? Release.Version + " · 下次按设定时间自动检查。" : Settings.InstallIssue); return; }
-                if (!install) { State(Settings.PendingPreset ? "配置待应用" : "可以更新", Settings.PendingPreset ? "已导入新的插件选择；点击「立即更新」即可安装，即使阿斯兰已是最新版。" : "官网 " + Release.Version + "；点击「立即更新」，或开启自动更新。"); return; }
-                if (!manual && Settings.FailedRelease == releaseKey) { State("需要处理上次安装", "此版本上次安装失败或被取消。点击「立即更新」重试；后续新版本仍会检查。"); return; }
-                if (DeferForRunningGame(manual)) return;
+                if (retry && (!manual || !install)) { State(Settings.IncompleteRelease == releaseKey ? "部分模组未安装完整" : "需要处理上次安装", string.IsNullOrEmpty(Settings.InstallIssue) ? "此版本上次安装失败或被取消。点击「使用历史配置更新」重试；不会自动反复安装。" : Settings.InstallIssue); return; }
+                if (decision == UpdateDecision.Current && !interactive && !retry && !applyImported) { State(string.IsNullOrEmpty(Settings.InstallIssue) ? "已是最新版本" : "版本最新，插件需要检查", string.IsNullOrEmpty(Settings.InstallIssue) ? Release.Version + (Settings.PendingPreset ? " · 另有导入预设待应用，请在插件配置页点击「使用该配置更新」。" : " · 下次按设定时间自动检查。") : Settings.InstallIssue); return; }
+                if (!install) { State("可以更新", "官网 " + Release.Version + "；点击「使用历史配置更新」安装。" + (Settings.PendingPreset ? "导入预设请在插件配置页点击「使用该配置更新」。" : "")); return; }
+                if (!manual && Settings.FailedRelease == releaseKey) { State("需要处理上次安装", "此版本上次安装失败或被取消。点击「使用历史配置更新」重试；后续新版本仍会检查。"); return; }
+                if (DeferForRunningGame(manual,action)) return;
                 if (manual) { Settings.FailedRelease = ""; Storage.Save(Settings); }
                 State("下载安装包", "仅使用官网直链，下载后自动校验 SHA-256。");
                 var progress = new Progress<Transfer>(p => { if (Progress != null) Progress(p); });
@@ -356,18 +378,20 @@ namespace AslainAssistant
                 // Download may take minutes; re-check the target and running game immediately before execution.
                 RefreshLocal();
                 decision = UpdatePolicy.Decide(Game, Release);
-                if (decision != UpdateDecision.Install && !((interactive || retry || Settings.PendingPreset) && decision == UpdateDecision.Current)) { State("安装条件已变化", "游戏或阿斯兰版本在下载期间发生变化，请重新检查。"); return; }
+                if (applyImported && Settings.ImportedPreset == null) { State("配置已应用","已核对上次安装结果，无需重复安装。"); return; }
+                if (decision != UpdateDecision.Install && !((interactive || retry || applyImported) && decision == UpdateDecision.Current)) { State("安装条件已变化", "游戏或阿斯兰版本在下载期间发生变化，请重新检查。"); return; }
                 await Task.Run(() => OfficialClient.Verify(file, Release.Sha256), cancellation.Token);
-                if (DeferForRunningGame(manual)) return;
+                if (DeferForRunningGame(manual,action)) return;
                 string runDir = Path.Combine(Storage.Root, "runs", DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-" + Guid.NewGuid().ToString("N").Substring(0, 6));
                 Directory.CreateDirectory(runDir);
                 string input = "", output = Path.Combine(runDir, "selection.inf"), log = Path.Combine(runDir, "installer.log");
-                if (Settings.Preset != null) { input = Path.Combine(runDir, "input.inf"); File.WriteAllText(input, Settings.Preset.ToInf(Game.Path, true), System.Text.Encoding.Unicode); }
-                bool wizard = interactive || Settings.Preset == null;
+                var installPreset = applyImported ? Settings.ImportedPreset : Settings.Preset;
+                if (installPreset != null) { input = Path.Combine(runDir, "input.inf"); File.WriteAllText(input, installPreset.ToInf(Game.Path, true), System.Text.Encoding.Unicode); }
+                bool wizard = interactive || installPreset == null;
                 // Persist before starting: a crash or restart cannot accidentally repeat the same installer forever.
-                Settings.FailedRelease = releaseKey; Settings.PendingRun = Path.GetFileName(runDir); Storage.Save(Settings);
+                Settings.FailedRelease = releaseKey; Settings.PendingRun = Path.GetFileName(runDir); Settings.PendingRunUsesImportedPreset = applyImported; Storage.Save(Settings);
                 Installing = true;
-                State(wizard ? "请在安装器中选择插件" : "正在自动安装", wizard ? "在阿斯兰窗口中选好插件并完成安装，助手会保存选择。" : "沿用保存的插件配置；Windows 可能要求管理员授权。");
+                State(wizard ? "请在安装器中选择插件" : "正在自动安装", wizard ? "在阿斯兰窗口中选好插件并完成安装，助手会保存选择。" : (applyImported ? "正在应用导入的预设" : "沿用历史安装配置") + "；Windows 可能要求管理员授权。");
                 if (Notify != null) Notify(Status + "：" + Detail);
                 DateTime started = DateTime.UtcNow;
                 int exit = await installer.Run(file, Installer.Arguments(Game.Path, input, output, log, wizard));
@@ -377,10 +401,10 @@ namespace AslainAssistant
                 var report = InstallReport.Read(log);
                 if (!report.Completed || !report.Closed) throw new IOException("安装日志没有完整结束记录，暂不标记为成功。请查看安装日志。");
                 Preset saved = File.Exists(output) ? Preset.FromInf(Storage.ReadSmall(output)) : GameDetector.ReadPreset(Game.Path);
-                if (Settings.PendingPreset && saved == null) throw new IOException("未能读取安装后的插件选择，导入配置仍标为待应用。请检查安装日志后重试。");
-                if (saved != null) { saved.Source = "安装完成后保存 · " + DateTime.Now.ToString("yyyy-MM-dd HH:mm"); Settings.Preset = saved; }
-                Settings.FailedRelease = ""; Settings.PendingRun = "";
-                if (!report.Incomplete) Settings.PendingPreset = false;
+                if (applyImported && saved == null) throw new IOException("未能读取安装后的插件选择，导入配置仍标为待应用。请检查安装日志后重试。");
+                if (saved != null) saved.Source = "安装完成后保存 · " + DateTime.Now.ToString("yyyy-MM-dd HH:mm");
+                SaveInstalledPreset(saved,applyImported,!report.Incomplete);
+                Settings.FailedRelease = ""; Settings.PendingRun = ""; Settings.PendingRunUsesImportedPreset = false;
                 ApplyReport(report, releaseKey); Storage.Save(Settings);
                 State(report.Incomplete ? "部分模组未安装完整" : report.FailedScripts.Count > 0 ? "已更新，请留意插件日志" : "更新完成", !string.IsNullOrEmpty(report.Summary) ? report.Summary : Release.Version + (exit == 3010 ? " · 安装程序要求重启，请在方便时手动重启。" : " · 插件选择已保存。"));
                 if (Notify != null) Notify(Status + "：" + Detail);
@@ -389,7 +413,7 @@ namespace AslainAssistant
             {
                 NextCheck = DateTimeOffset.Now.AddMinutes(15);
                 if (cancellation.IsCancellationRequested) State("已取消", "本次检查或下载已取消；已安装模组和插件配置保持不变。");
-                else if (Installing) State("安装授权已取消", "Windows 安装授权被取消，点击「立即更新」可重试。");
+                else if (Installing) State("安装授权已取消", "Windows 安装授权被取消，点击「使用历史配置更新」可重试。");
                 else NetworkFailure("连接超时，未能完成版本查询或下载。",manual);
             }
             catch (HttpRequestException ex)

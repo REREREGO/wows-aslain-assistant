@@ -126,7 +126,9 @@ namespace AslainAssistant
         public bool AutoUpdate { get; set; }
         public int CheckHours { get; set; }
         public Preset Preset { get; set; }
+        public Preset ImportedPreset { get; set; }
         public bool PendingPreset { get; set; }
+        public bool PendingRunUsesImportedPreset { get; set; }
         public string FailedRelease { get; set; }
         public string LastCheck { get; set; }
         public string PendingRun { get; set; }
@@ -144,6 +146,15 @@ namespace AslainAssistant
             if (!string.IsNullOrEmpty(IncompleteRelease)) PackVersion.Parse(IncompleteRelease);
             if (InstallIssue != null && InstallIssue.Length > 4000) throw new InvalidDataException("安装诊断信息过长。");
             if (Preset != null) Preset.Validate();
+            // Older local builds stored an uninstalled import in Preset itself.
+            // Move it aside; the worker can recover installation history from disk.
+            if (PendingPreset && ImportedPreset == null && Preset != null)
+            {
+                ImportedPreset = Preset; Preset = null;
+                PendingRunUsesImportedPreset = !string.IsNullOrEmpty(PendingRun);
+            }
+            if (ImportedPreset != null) ImportedPreset.Validate();
+            PendingPreset = ImportedPreset != null;
             return this;
         }
     }
@@ -196,30 +207,35 @@ namespace AslainAssistant
         }
         public static string Export(Settings settings)
         {
-            return Json().Serialize(new Backup { Format = "wows-aslain-assistant", Schema = 1, ExportedAt = DateTimeOffset.Now.ToString("o"), Settings = settings.Validate() });
+            var exported = Json().Deserialize<Settings>(Json().Serialize(settings.Validate()));
+            exported.Preset = exported.ImportedPreset ?? exported.Preset;
+            exported.ImportedPreset = null; exported.PendingPreset = false;
+            exported.PendingRun = ""; exported.PendingRunUsesImportedPreset = false;
+            return Json().Serialize(new Backup { Format = "wows-aslain-assistant", Schema = 1, ExportedAt = DateTimeOffset.Now.ToString("o"), Settings = exported });
         }
         public static Settings Import(string file, Settings current)
         {
             var result = Json().Deserialize<Settings>(Json().Serialize(current));
             string text = ReadSmall(file), ext = Path.GetExtension(file).ToLowerInvariant();
-            if (ext == ".inf") result.Preset = Preset.FromInf(text);
-            else if (ext == ".reg") result.Preset = Preset.FromReg(text);
+            if (ext == ".inf") result.ImportedPreset = Preset.FromInf(text);
+            else if (ext == ".reg") result.ImportedPreset = Preset.FromReg(text);
             else if (ext == ".json")
             {
                 var backup = Json().Deserialize<Backup>(text);
                 if (backup == null || backup.Format != "wows-aslain-assistant" || backup.Schema != 1 || backup.Settings == null) throw new InvalidDataException("不是本助手的有效配置备份。");
                 backup.Settings.Validate();
-                result.Preset = backup.Settings.Preset;
+                result.ImportedPreset = backup.Settings.ImportedPreset ?? backup.Settings.Preset;
                 result.CheckHours = backup.Settings.CheckHours;
                 // Keep the current machine's target. Adopt a valid backup path only when no target is set.
                 if (string.IsNullOrEmpty(result.GamePath) && GameDetector.IsGameFolder(backup.Settings.GamePath)) result.GamePath = backup.Settings.GamePath;
             }
             else throw new InvalidDataException("仅支持 .json、.inf 或阿斯兰导出的 .reg 配置。");
             result.AutoUpdate = false; // Import never starts a background install or registers a login item.
-            result.PendingPreset = result.Preset != null;
+            result.PendingPreset = result.ImportedPreset != null;
             result.FailedRelease = "";
             result.PendingRun = "";
-            if (result.Preset != null) result.Preset.Source = "导入：" + Path.GetFileName(file);
+            result.PendingRunUsesImportedPreset = false;
+            if (result.ImportedPreset != null) result.ImportedPreset.Source = "导入：" + Path.GetFileName(file);
             return result.Validate();
         }
     }
