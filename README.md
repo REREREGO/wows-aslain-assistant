@@ -10,7 +10,7 @@
 
 适用于 Windows，需要 .NET Framework 4.8。更新的是阿斯兰**经典模组包**。
 
-![1.0.1 更新概览](docs/images/dashboard-light.png)
+![1.0.1 更新概览](docs/images/dashboard-light.jpg)
 
 ## 第一次用
 
@@ -29,7 +29,7 @@
 
 你选好自己的客户端，点 **导入配置**，然后点同一页的 **使用该配置更新**。哪怕阿斯兰已经是最新版，也会按这份新配置重新安装。
 
-![导入群友配置后直接应用](docs/images/presets.png)
+![导入群友配置后直接应用](docs/images/presets.jpg)
 
 装好后，这份选择就会成为后续自动更新使用的配置。导入时会暂停该客户端的自动更新，确认效果后再打开。
 
@@ -60,7 +60,7 @@
 
 左下角也可以切换深浅主题，重启后会记住。
 
-![1.0.1 深色界面](docs/images/dashboard-dark.png)
+![1.0.1 深色界面](docs/images/dashboard-dark.jpg)
 
 ## 装完发现少了插件
 
