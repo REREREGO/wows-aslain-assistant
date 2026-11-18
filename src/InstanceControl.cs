@@ -17,6 +17,7 @@ namespace AslainAssistant
         public static string PipeName(int pid) { return "WoWSAslainAssistant-Control-" + pid; }
         public static string SetupMutex { get { return "Local\\WoWSAslainAssistant-Setup-" + WindowsIdentity.GetCurrent().User.Value; } }
         public static string ApplicationMutex { get { return "Local\\WoWSAslainAssistant-App-" + WindowsIdentity.GetCurrent().User.Value; } }
+        public static string ActivationPipeName { get { return "WoWSAslainAssistant-User-" + WindowsIdentity.GetCurrent().User.Value; } }
         delegate bool WindowCallback(IntPtr window,IntPtr state);
         [DllImport("user32.dll")] static extern bool EnumWindows(WindowCallback callback,IntPtr state);
         [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr window,out uint processId);
@@ -25,6 +26,9 @@ namespace AslainAssistant
         [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr window);
         public static bool ActivateExisting(bool reveal, bool legacyOnly = false)
         {
+            // The current release can be reached without enumerating processes or
+            // reading executable version resources. Older releases use the PID fallback.
+            if(!legacyOnly && reveal && Send(ActivationPipeName,Activate,100)==Ready) return true;
             int ownId=Process.GetCurrentProcess().Id;
             foreach(var process in Process.GetProcessesByName("AslainAssistant")) using(process)
             {
@@ -67,11 +71,15 @@ namespace AslainAssistant
         }
         public static byte Send(int pid,byte command)
         {
+            return Send(PipeName(pid),command,500);
+        }
+        public static byte Send(string name,byte command,int connectTimeout=500)
+        {
             try
             {
-                using (var pipe = new NamedPipeClientStream(".",PipeName(pid),PipeDirection.InOut,PipeOptions.Asynchronous))
+                using (var pipe = new NamedPipeClientStream(".",name,PipeDirection.InOut,PipeOptions.Asynchronous))
                 {
-                    pipe.Connect(500); pipe.WriteByte(command); pipe.Flush();
+                    pipe.Connect(connectTimeout); pipe.WriteByte(command); pipe.Flush();
                     var result = new byte[1]; var read = pipe.ReadAsync(result,0,1);
                     return read.Wait(2500) && read.Result == 1 ? result[0] : Unavailable;
                 }
@@ -86,11 +94,13 @@ namespace AslainAssistant
     {
         readonly Func<byte,byte> command;
         readonly Action exit;
+        readonly string name;
         volatile bool stopped;
         NamedPipeServerStream active;
-        public InstanceServer(Func<byte,byte> onCommand,Action onExit)
+        public InstanceServer(Func<byte,byte> onCommand,Action onExit,string pipeName=null)
         {
             command = onCommand; exit = onExit;
+            name = pipeName ?? InstanceControl.PipeName(Process.GetCurrentProcess().Id);
             Task.Run((Func<Task>)Listen);
         }
         async Task Listen()
@@ -102,7 +112,7 @@ namespace AslainAssistant
             {
                 try
                 {
-                    using (var pipe = new NamedPipeServerStream(InstanceControl.PipeName(Process.GetCurrentProcess().Id),PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous,512,512,security))
+                    using (var pipe = new NamedPipeServerStream(name,PipeDirection.InOut,1,PipeTransmissionMode.Byte,PipeOptions.Asynchronous,512,512,security))
                     {
                         active = pipe; if (stopped) return;
                         await pipe.WaitForConnectionAsync().ConfigureAwait(false);

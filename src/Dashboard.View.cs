@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Forms;
 using Ant = AntdUI;
 
@@ -31,21 +33,25 @@ namespace AslainAssistant
         readonly Ant.Label assistantUpdateStatus = UiTheme.Label("");
         readonly SelfUpdateEngine selfUpdate;
         InstanceServer instanceServer;
+        InstanceServer activationServer;
         bool shutdownForUpdate;
         DateTime shutdownLease;
         bool networkWasAvailable = System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable();
         readonly NotifyIcon tray = new NotifyIcon();
-        readonly Timer timer = new Timer();
+        readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer();
         readonly bool background;
         UpdateEngine selected;
         Ant.Button cancel, update, deleteClient, addClient;
         Ant.Panel statusCard;
         bool binding, quitting, booted;
+        bool loadingClients;
+        readonly CancellationTokenSource startupCancellation = new CancellationTokenSource();
+        Func<List<Settings>,CancellationToken,Task<List<ClientSnapshot>>> loadClients = LoadStartupClients;
         bool confirmingDelete;
         Func<Settings,bool> confirmDelete;
         DateTimeOffset lastLocalPoll = DateTimeOffset.MinValue;
 
-        public Dashboard(bool startHidden)
+        public Dashboard(bool startHidden,bool ownsInstance=false)
         {
             SuspendLayout(); background = startHidden;
             preferences = UiPreferences.Load(Storage.Root); UiTheme.SetDark(preferences.Dark);
@@ -62,7 +68,7 @@ namespace AslainAssistant
             confirmDelete = ConfirmClientDeletion;
             BuildUi();
             pages.SelectedIndex = preferences.PageIndex;
-            pages.SelectedIndexChanged += (s,e)=>Guard(()=>{if (!booted) return; preferences.PageIndex = pages.SelectedIndex; preferences.Save(Storage.Root);});
+            pages.SelectedIndexChanged += (s,e)=>Guard(()=>{UiTheme.LayoutVisible(pages); if (!booted) return; preferences.PageIndex = pages.SelectedIndex; preferences.Save(Storage.Root);});
             var menu = new ContextMenuStrip();
             menu.Items.Add("打开仪表盘",null,(s,e)=>Reveal());
             menu.Items.Add("立即检查所有客户端",null,async (s,e)=>await CheckAll(false));
@@ -77,8 +83,9 @@ namespace AslainAssistant
                 MinimumSize = new Size(Math.Min(MinimumSize.Width,area.Width-40),Math.Min(MinimumSize.Height,area.Height-40));
                 Size = new Size(Math.Min(Width,area.Width-40),Math.Min(Height,area.Height-40));
                 Location = new Point(area.Left+(area.Width-Width)/2,area.Top+(area.Height-Height)/2);
-                await Initialize();
                 if (!IsDisposed) instanceServer = new InstanceServer(command=>(byte)Invoke(new Func<byte>(()=>HandleInstanceCommand(command))),()=>{if(!IsDisposed)BeginInvoke(new Action(()=>{quitting=true;Close();}));});
+                if (!IsDisposed && ownsInstance) activationServer = new InstanceServer(command=>(byte)Invoke(new Func<byte>(()=>HandleInstanceCommand(command))),()=>{if(!IsDisposed)BeginInvoke(new Action(()=>{quitting=true;Close();}));},InstanceControl.ActivationPipeName);
+                await Initialize();
             };
             timer.Interval = 10000; timer.Tick += async (s,e)=>await Tick();
             ResumeLayout(true);

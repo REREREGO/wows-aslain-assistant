@@ -40,6 +40,9 @@ class InstanceTests
             Thread.Sleep(1500);
             if(children.Count(p=>!p.HasExited)!=1) throw new Exception("The sole assistant exited after a startup race.");
             Console.WriteLine("PASS eight simultaneous launches with different profiles retain one responsive assistant");
+            var activationWatch=Stopwatch.StartNew();
+            if(InstanceControl.Send(InstanceControl.ActivationPipeName,InstanceControl.Resume)!=InstanceControl.Ready) throw new Exception("Direct activation endpoint is unavailable.");
+            Console.WriteLine("PASS direct instance endpoint responds in "+activationWatch.ElapsedMilliseconds+" ms without process discovery");
             using(var duplicate=Process.Start(new ProcessStartInfo(executable,"--background --profile \""+Path.Combine(root,"unused")+"\"") {UseShellExecute=false,CreateNoWindow=true,WindowStyle=ProcessWindowStyle.Hidden}))
             {
                 children.Add(duplicate);

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -176,38 +177,141 @@ namespace AslainAssistant
                 Call(form,"DeleteClient");
             });
         }
-        static void RunWindow(Action<Dashboard> check)
+        static void Capture(Dashboard form,string name)
         {
-            using (var form = new Dashboard(false))
+            using(var bitmap=new Bitmap(form.ClientSize.Width,form.ClientSize.Height))
+            {
+                using(var graphics=Graphics.FromImage(bitmap)) graphics.Clear(form.BackColor);
+                for(int i=form.Controls.Count-1;i>=0;i--)
+                    if(form.Controls[i].Visible) form.Controls[i].DrawToBitmap(bitmap,form.Controls[i].Bounds);
+                bitmap.Save(Path.Combine(Storage.Root,name),System.Drawing.Imaging.ImageFormat.Png);
+            }
+        }
+        static void BackgroundLayout(Dashboard form)
+        {
+            Assert((bool)typeof(Dashboard).GetProperty("ShowWithoutActivation",Flags).GetValue(form,null),"Background startup must not activate over the game");
+            Call(form,"Reveal"); Application.DoEvents();
+            Capture(form,"tray-layout.png");
+            var tiles=(Dictionary<UpdateEngine,AntdUI.Button>)Field(form,"tiles");
+            foreach(var pair in tiles) Console.WriteLine("TILE "+pair.Key.Settings.Name+" "+pair.Value.Bounds);
+            Test("background startup restores separate full-width client tiles",()=>
+            {
+                var controls=tiles.Values.ToArray();
+                for(int i=0;i<controls.Length;i++)
+                {
+                    Fits(controls[i]);
+                    Assert(controls[i].Width>controls[i].Parent.ClientSize.Width*0.85,"Client tile kept its unlaid-out width");
+                    for(int j=i+1;j<controls.Length;j++) Assert(!controls[i].Bounds.IntersectsWith(controls[j].Bounds),"Client tiles overlap after tray startup");
+                }
+            });
+            Test("client selection and page layouts survive repeated tray restores",()=>
+            {
+                var pages=(AntdUI.Tabs)Field(form,"pages");
+                foreach(var pair in tiles)
+                {
+                    typeof(Control).GetMethod("OnClick",Flags).Invoke(pair.Value,new object[]{EventArgs.Empty});
+                    Assert(Field(form,"selected")==pair.Key && ((AntdUI.Label)Field(form,"selectedLabel")).Text==pair.Key.Settings.Name,"Sidebar selection does not match the displayed client");
+                    form.Hide(); Call(form,"Reveal"); Application.DoEvents();
+                    Assert(Field(form,"selected")==pair.Key && pair.Value.Type==AntdUI.TTypeMini.Primary,"Restoring changed the selected client");
+                }
+                form.Size=form.MinimumSize;
+                foreach(int theme in new[]{1,0})
+                {
+                    ((AntdUI.Segmented)Field(form,"themeMode")).SelectIndex=theme;
+                    for(int page=0;page<pages.Pages.Count;page++)
+                    {
+                        pages.SelectedIndex=page; form.Hide(); Call(form,"Reveal"); Application.DoEvents();
+                        Assert(pages.Pages[page].Visible,"Restored page is hidden");
+                        if(page==1)
+                        {
+                            var remove=(Control)Field(form,"deleteClient"); Fits(remove);
+                            foreach(Control peer in remove.Parent.Controls) if(peer!=remove) Assert(!remove.Bounds.IntersectsWith(peer.Bounds),"Settings actions overlap after restore");
+                        }
+                    }
+                }
+            });
+        }
+        static void SlowStartup()
+        {
+            var source=new TaskCompletionSource<List<ClientSnapshot>>();
+            List<Settings> copies=null; Exception failure=null; UpdateEngine chosen=null; long activation=0;
+            RunWindow(form=>Test("activation responds during slow startup and stays visible after loading",()=>
+            {
+                if(failure!=null) throw failure;
+                Assert(activation<1000,"Activation waited for startup work");
+                Assert(form.Visible && Field(form,"selected")==chosen,"Startup completion hid the window or reset the selected client");
+                Assert(((AntdUI.Label)Field(form,"selectedLabel")).Text==chosen.Settings.Name,"Loaded data replaced the wrong client selection");
+                Console.WriteLine("Activation during pending disk work: "+activation+" ms");
+            }),true,form=>
+            {
+                typeof(Dashboard).GetField("loadClients",Flags).SetValue(form,new Func<List<Settings>,System.Threading.CancellationToken,Task<List<ClientSnapshot>>>((settings,token)=>{copies=settings;return source.Task;}));
+                form.Shown+=async (s,e)=>
+                {
+                    try
+                    {
+                        var watch=Stopwatch.StartNew();
+                        byte reply=await Task.Run(()=>InstanceControl.Send(Process.GetCurrentProcess().Id,InstanceControl.Activate));
+                        activation=watch.ElapsedMilliseconds;
+                        Assert(reply==InstanceControl.Ready && form.Visible && !(bool)Field(form,"booted"),"Activation endpoint was unavailable until startup completed");
+                        var tiles=(Dictionary<UpdateEngine,AntdUI.Button>)Field(form,"tiles");
+                        var choice=tiles.Last(); chosen=choice.Key;
+                        typeof(Control).GetMethod("OnClick",Flags).Invoke(choice.Value,new object[]{EventArgs.Empty});
+                        await Task.Delay(800);
+                        Assert(form.Visible && !(bool)Field(form,"booted"),"Slow worker blocked or hid the dashboard");
+                    }
+                    catch(Exception ex) {failure=ex;}
+                    finally {source.TrySetResult(copies.Select(x=>new ClientSnapshot {Settings=x,Status="读取完成",Detail="测试加载结果"}).ToList());}
+                };
+            });
+        }
+        static void RunWindow(Action<Dashboard> check,bool background=false,Action<Dashboard> configure=null)
+        {
+            var elapsed=Stopwatch.StartNew();
+            using (var form = new Dashboard(background))
             using (var ready = new Timer { Interval = 100 })
             {
                 form.Opacity = 0; form.ShowInTaskbar = false;
+                if(configure!=null) configure(form);
                 int ticks = 0;
                 ready.Tick += (s,e)=>
                 {
                     bool booted = (bool)Field(form,"booted");
                     if (!booted && ++ticks < 100) return;
                     ready.Stop();
-                    try { Assert(booted,"Dashboard initialization timed out"); check(form); }
+                    try { Assert(booted,"Dashboard initialization timed out"); Console.WriteLine("Dashboard ready in "+elapsed.ElapsedMilliseconds+" ms"); check(form); }
                     catch (Exception ex) { Console.Error.WriteLine(ex); exitCode = 1; }
                     finally { typeof(Dashboard).GetField("quitting",Flags).SetValue(form,true); form.Close(); }
                 };
                 form.Shown += (s,e)=>ready.Start(); Application.Run(form);
             }
         }
-        [STAThread] static int Main()
+        [STAThread] static int Main(string[] args)
         {
             Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false); UiTheme.Initialize();
             Control.CheckForIllegalCrossThreadCalls = true;
             Storage.Root = Path.GetFullPath(Path.Combine("artifacts","ui-tests-" + DateTime.Now.ToString("yyyyMMdd-HHmmss")));
             Storage.Save(new Settings { GamePath = Path.Combine(Storage.Root,"absent-cn"), Name = "UI 测试国服" });
             Storage.Save(new Settings { Id = "intl", Server = "INTL", Name = "UI 测试外服", GamePath = Path.Combine(Storage.Root,"absent-intl"), CheckHours = 2 });
+            if(Array.IndexOf(args,"--background-layout")>=0)
+            {
+                Storage.Save(new Settings {Id="custom-cn",Name="国服",GamePath=Path.Combine(Storage.Root,"absent-custom")});
+                Console.WriteLine("UI evidence: "+Storage.Root);
+                RunWindow(BackgroundLayout,true); return exitCode;
+            }
             RunWindow(Run);
             if(exitCode == 0) RunWindow(form=>Test("restarting an empty dashboard does not recreate default clients",()=>
             {
                 Assert(((List<UpdateEngine>)Field(form,"engines")).Count == 0 && Field(form,"selected") == null,"Default clients reappeared after restart");
                 Assert(((AntdUI.Button)Field(form,"addClient")).Enabled,"Cannot add a client after restarting empty");
             }));
+            if(exitCode==0)
+            {
+                Storage.Save(new Settings {GamePath=Path.Combine(Storage.Root,"absent-cn")});
+                Storage.Save(new Settings {Id="intl",Server="INTL",Name="外服",GamePath=Path.Combine(Storage.Root,"absent-intl")});
+                Storage.Save(new Settings {Id="custom",Name="国服",GamePath=Path.Combine(Storage.Root,"absent-custom")});
+                RunWindow(BackgroundLayout,true);
+                if(exitCode==0) SlowStartup();
+            }
             if(exitCode == 0) Console.WriteLine("All " + passed + " UI tests passed at " + (AntdUI.Config.Dpi * 100) + "% DPI.");
             return exitCode;
         }

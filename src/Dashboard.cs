@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 
@@ -11,30 +12,58 @@ namespace AslainAssistant
 {
     public sealed partial class Dashboard : AntdUI.Window
     {
+        // Login/update launches must not steal focus from a running game. An
+        // explicit user activation still calls Activate() in Reveal().
+        protected override bool ShowWithoutActivation { get { return background; } }
         async Task Initialize()
         {
             if (background) Hide();
+            loadingClients = true;
+            var token = startupCancellation.Token;
             try
             {
                 foreach (Settings settings in Storage.LoadAll()) AddEngine(settings);
                 selected = engines.FirstOrDefault();
-                var found = engines.Count == 0 ? new List<string>() : await Task.Run(() => GameDetector.Discover());
-                foreach (var engine in engines)
-                {
-                    if (string.IsNullOrEmpty(engine.Settings.GamePath))
-                    {
-                        var matching = found.Where(p => GameDetector.ClientKind(p) == engine.Settings.Server && !engines.Any(x => string.Equals(x.Settings.GamePath, p, StringComparison.OrdinalIgnoreCase))).ToList();
-                        if (matching.Count == 1) { engine.Settings.GamePath = matching[0]; engine.Settings.Preset = GameDetector.ReadPreset(matching[0]); if (engine.Settings.Preset != null) engine.Settings.Preset.Source = "从已安装阿斯兰读取"; Storage.Save(engine.Settings); }
-                    }
-                    if (GameDetector.IsGameFolder(engine.Settings.GamePath)) engine.RefreshLocal();
-                    Storage.Save(engine.Settings);
-                }
+                foreach(var engine in engines) { engine.Status = "正在读取客户端"; engine.Detail = "正在读取游戏版本和插件安装记录…"; }
+                Bind();
+                // Only detached settings are passed to the worker. No control, live
+                // engine or selected client is modified off the UI thread.
+                var settingsCopies = engines.Select(x=>Storage.Json().Deserialize<Settings>(Storage.Json().Serialize(x.Settings))).ToList();
+                var snapshots = await loadClients(settingsCopies,token);
+                token.ThrowIfCancellationRequested();
+                if (IsDisposed) return;
+                foreach(var snapshot in snapshots) engines.Single(x=>x.Settings.Id == snapshot.Settings.Id).ApplySnapshot(snapshot);
                 booted = true; Bind(); timer.Start();
                 AddLog("已就绪。每个客户端独立保存路径和配置；首次安装可手动选择插件。关闭窗口后继续在托盘运行。");
                 AddLog("版本匹配时发现更新即安装；跨游戏版本只预下载。安装可能需要 Windows 管理员授权。");
-                if (background) Hide();
             }
-            catch (Exception ex) { UiTheme.Notice(this, "配置需要处理", "读取配置失败，原文件已保留：\n" + ex.Message + "\n配置目录：" + Storage.Root, AntdUI.TType.Error); quitting = true; Close(); }
+            catch (OperationCanceledException) { }
+            catch (Exception ex) { if(IsDisposed || token.IsCancellationRequested) return; UiTheme.Notice(this, "配置需要处理", "读取配置失败，原文件已保留：\n" + ex.Message + "\n配置目录：" + Storage.Root, AntdUI.TType.Error); quitting = true; Close(); }
+            finally { loadingClients = false; }
+        }
+        static Task<List<ClientSnapshot>> LoadStartupClients(List<Settings> settings,CancellationToken token)
+        {
+            return Task.Run(()=>
+            {
+                token.ThrowIfCancellationRequested();
+                var found = settings.Any(x=>string.IsNullOrEmpty(x.GamePath)) ? GameDetector.Discover() : new List<string>();
+                var result = new List<ClientSnapshot>();
+                foreach(var item in settings)
+                {
+                    token.ThrowIfCancellationRequested();
+                    if(string.IsNullOrEmpty(item.GamePath))
+                    {
+                        var matching = found.Where(p=>GameDetector.ClientKind(p)==item.Server && !settings.Any(x=>string.Equals(x.GamePath,p,StringComparison.OrdinalIgnoreCase))).ToList();
+                        if(matching.Count == 1)
+                        {
+                            item.GamePath = matching[0]; item.Preset = GameDetector.ReadPreset(matching[0]);
+                            if(item.Preset != null) item.Preset.Source = "从已安装阿斯兰读取";
+                        }
+                    }
+                    result.Add(UpdateEngine.ReadSnapshot(item,token));
+                }
+                return result;
+            },token);
         }
         void AddEngine(Settings settings)
         {
@@ -277,7 +306,7 @@ namespace AslainAssistant
         }
         async Task RunSelected(bool install, bool interactive)
         {
-            if (selected == null || engines.Any(x => x.Busy) || selfUpdate.Busy || shutdownForUpdate || confirmingDelete) return;
+            if (!booted || selected == null || engines.Any(x => x.Busy) || selfUpdate.Busy || shutdownForUpdate || confirmingDelete) return;
             await selected.Run(install, interactive, true);
         }
         async Task CheckAll(bool update)
@@ -328,7 +357,7 @@ namespace AslainAssistant
             shutdownForUpdate=true; shutdownLease=DateTime.UtcNow.AddSeconds(30);
             foreach(var engine in engines) engine.Cancel();
             selfUpdate.Cancel();
-            if(engines.Any(x=>x.Busy) || (selfUpdate.Busy && !selfUpdate.Handoff)) return InstanceControl.Waiting;
+            if(loadingClients || engines.Any(x=>x.Busy) || (selfUpdate.Busy && !selfUpdate.Handoff)) return InstanceControl.Waiting;
             return InstanceControl.Ready;
         }
         void AddLog(string message)
@@ -345,7 +374,7 @@ namespace AslainAssistant
             catch (IOException) { }
             catch (UnauthorizedAccessException) { }
         }
-        void Reveal() { Show(); WindowState = FormWindowState.Normal; Activate(); }
+        void Reveal() { Show(); WindowState = FormWindowState.Normal; UiTheme.LayoutVisible(this); Invalidate(true); Activate(); }
         void Quit()
         {
             if (engines.Any(x => x.Installing)) { Reveal(); UiTheme.Notice(this, "正在安装", "阿斯兰正在安装，请等待安装完成后再退出助手。", AntdUI.TType.Warn); return; }
@@ -356,7 +385,9 @@ namespace AslainAssistant
         {
             if (!quitting && args.CloseReason == CloseReason.UserClosing) { args.Cancel = true; Hide(); return; }
             timer.Stop(); tray.Visible = false; tray.Dispose();
+            startupCancellation.Cancel(); startupCancellation.Dispose();
             if(instanceServer!=null) instanceServer.Dispose();
+            if(activationServer!=null) activationServer.Dispose();
             selfUpdate.Dispose();
             foreach (var engine in engines) engine.Dispose();
         }

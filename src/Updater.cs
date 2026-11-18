@@ -168,6 +168,14 @@ namespace AslainAssistant
             catch (Win32Exception ex) { if (ex.NativeErrorCode == 1223) throw new OperationCanceledException("已取消 Windows 管理员授权。"); throw; }
         }
     }
+    public sealed class ClientSnapshot
+    {
+        public Settings Settings;
+        public GameState Game;
+        public InstallReport Report;
+        public string Status, Detail;
+        internal string ReconciledLog;
+    }
     public sealed class UpdateEngine : IDisposable
     {
         public Settings Settings;
@@ -191,6 +199,21 @@ namespace AslainAssistant
         string reconciledLog = "";
         CancellationTokenSource cancellation;
         public UpdateEngine(Settings settings, OfficialClient client, Installer setup) { Settings = settings; Client = client; installer = setup; }
+        public static ClientSnapshot ReadSnapshot(Settings settings,CancellationToken token)
+        {
+            using(var reader = new UpdateEngine(settings,new OfficialClient(),new Installer()))
+            {
+                token.ThrowIfCancellationRequested();
+                if(GameDetector.IsGameFolder(settings.GamePath)) reader.RefreshLocal();
+                token.ThrowIfCancellationRequested(); Storage.Save(settings);
+                return new ClientSnapshot {Settings=settings,Game=reader.Game,Report=reader.LastReport,Status=reader.Status,Detail=reader.Detail,ReconciledLog=reader.reconciledLog};
+            }
+        }
+        public void ApplySnapshot(ClientSnapshot snapshot)
+        {
+            Settings=snapshot.Settings; Game=snapshot.Game; LastReport=snapshot.Report;
+            Status=snapshot.Status; Detail=snapshot.Detail; reconciledLog=snapshot.ReconciledLog;
+        }
         void State(string status, string detail)
         {
             Status = status; Detail = detail;

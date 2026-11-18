@@ -36,6 +36,14 @@ namespace AslainAssistant
             foreach (Form form in Application.OpenForms) form.Invalidate(true);
         }
         public static void Secondary(AntdUI.Label label) { Bind(label,()=>label.ForeColor = Muted); }
+        public static void LayoutVisible(Control root)
+        {
+            if (!root.Visible) return;
+            // AntdUI layouts skip invisible controls. Re-run their own layout engine
+            // after restoring the tray window or switching to a previously hidden page.
+            root.PerformLayout();
+            foreach (Control child in root.Controls) LayoutVisible(child);
+        }
         public static AntdUI.Label Label(string text, float size = 10, bool bold = false)
         {
             return new AntdUI.Label { Text = text, BackColor = Color.Transparent, Font = new Font("Microsoft YaHei UI", size, bold ? FontStyle.Bold : FontStyle.Regular), AutoEllipsis = true, TextMultiLine = true, Margin = Padding.Empty };
