@@ -229,7 +229,15 @@ namespace AslainAssistant
         static void BackgroundLayout(Dashboard form)
         {
             Assert((bool)typeof(Dashboard).GetProperty("ShowWithoutActivation",Flags).GetValue(form,null),"Background startup must not activate over the game");
-            Call(form,"Reveal"); Application.DoEvents();
+            var tray=(NotifyIcon)Field(form,"tray");
+            var click=typeof(NotifyIcon).GetMethod("OnMouseClick",Flags);
+            form.Hide();
+            click.Invoke(tray,new object[]{new MouseEventArgs(MouseButtons.Right,1,0,0,0)});
+            Assert(!form.Visible && tray.ContextMenuStrip!=null,"Right click must retain the tray menu without opening the dashboard");
+            click.Invoke(tray,new object[]{new MouseEventArgs(MouseButtons.Left,1,0,0,0)}); Application.DoEvents();
+            Assert(form.Visible,"One left click did not restore the dashboard");
+            click.Invoke(tray,new object[]{new MouseEventArgs(MouseButtons.Left,1,0,0,0)});
+            Assert(form.Visible,"Repeated tray click hid the dashboard");
             Capture(form,"tray-layout.png");
             var tiles=(Dictionary<UpdateEngine,AntdUI.Button>)Field(form,"tiles");
             foreach(var pair in tiles) Console.WriteLine("TILE "+pair.Key.Settings.Name+" "+pair.Value.Bounds);

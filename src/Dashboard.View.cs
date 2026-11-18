@@ -76,7 +76,7 @@ namespace AslainAssistant
             menu.Items.Add("立即更新已开启的客户端",null,async (s,e)=>await CheckAll(true));
             menu.Items.Add(new ToolStripSeparator()); menu.Items.Add("退出助手",null,(s,e)=>Quit());
             tray.Icon = Icon; tray.Text = "窝窝斯坐牢小助手"; tray.ContextMenuStrip = menu; tray.Visible = true;
-            tray.DoubleClick += (s,e)=>Reveal(); tray.BalloonTipClicked += (s,e)=>Reveal();
+            tray.MouseClick += (s,e)=>{if(e.Button == MouseButtons.Left) Reveal();}; tray.BalloonTipClicked += (s,e)=>Reveal();
             FormClosing += OnClosing;
             Shown += async (s,e) =>
             {
