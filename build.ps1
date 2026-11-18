@@ -19,7 +19,7 @@ $branding = @(('/win32icon:' + $icon), ('/resource:' + $icon + ',AppIcon'), ('/r
 & $compiler /nologo /utf8output /target:winexe /platform:anycpu /optimize+ /win32manifest:app.manifest $appOutput @branding @references @sources
 if ($LASTEXITCODE -ne 0) { throw '应用编译失败。' }
 $testOutput = '/out:' + (Join-Path $OutputDirectory 'AslainAssistant.Tests.exe')
-& $compiler /nologo /utf8output /target:exe /platform:anycpu $testOutput /main:AslainAssistant.Tests @branding @references @sources tests\Tests.cs tests\PresetTests.cs tests\UpdateTests.cs packaging\InstallOperations.cs
+& $compiler /nologo /utf8output /target:exe /platform:anycpu $testOutput /main:AslainAssistant.Tests @branding @references @sources tests\Tests.cs tests\PresetTests.cs tests\UpdateTests.cs tests\MirrorTests.cs packaging\InstallOperations.cs
 if ($LASTEXITCODE -ne 0) { throw '测试编译失败。' }
 $uiTestOutput = '/out:' + (Join-Path $OutputDirectory 'AslainAssistant.UiTests.exe')
 & $compiler /nologo /utf8output /target:exe /platform:anycpu /win32manifest:app.manifest $uiTestOutput /main:AslainAssistant.UiTests @branding @references @sources tests\UiTests.cs

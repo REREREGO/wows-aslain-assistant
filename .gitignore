@@ -11,6 +11,10 @@ release/*.json
 *.pfx
 *.p12
 signing-key.xml
+aslain-mirror-key.xml
+gitee-token.txt
+gitcode-token.txt
+atomgit-token.txt
 .env
 assets/logo-options/
 assets/logo/design.json

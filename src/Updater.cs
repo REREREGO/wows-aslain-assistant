@@ -16,14 +16,14 @@ namespace AslainAssistant
     {
         public long Received, Total;
     }
-    public sealed class OfficialClient : IDisposable
+    public sealed partial class OfficialClient : IDisposable
     {
         readonly HttpClient client;
         public OfficialClient() : this(new HttpClientHandler { AllowAutoRedirect = false, AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate }) { }
         public OfficialClient(HttpMessageHandler handler)
         {
             client = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
-            client.DefaultRequestHeaders.UserAgent.ParseAdd("WoWS-Aslain-Assistant/1.4 (+https://aslain.com)");
+            client.DefaultRequestHeaders.UserAgent.ParseAdd("WoWS-Aslain-Assistant/"+typeof(OfficialClient).Assembly.GetName().Version.ToString(3)+" (+https://aslain.com)");
         }
         public static bool Allowed(Uri url)
         {
@@ -65,8 +65,22 @@ namespace AslainAssistant
         {
             byte[] buffer = new byte[81920]; long total = 0; int read;
             var watch = Stopwatch.StartNew();
-            while ((read = await source.ReadAsync(buffer, 0, buffer.Length, token)) > 0)
+            while (true)
             {
+                using (var idle=CancellationTokenSource.CreateLinkedTokenSource(token))
+                {
+                    // Some .NET Framework response streams ignore cancellation while a read is pending.
+                    var pending=source.ReadAsync(buffer,0,buffer.Length,token);
+                    if (await Task.WhenAny(pending,Task.Delay(TimeSpan.FromSeconds(30),idle.Token)) != pending)
+                    {
+                        source.Dispose();
+                        ObserveReadFailure(pending);
+                        token.ThrowIfCancellationRequested();
+                        throw new OperationCanceledException("下载已连续 30 秒没有收到数据。");
+                    }
+                    idle.Cancel(); read=await pending;
+                }
+                if (read == 0) break;
                 total += read;
                 if (total > maximum) throw new InvalidDataException("服务器返回文件超过大小限制。");
                 await destination.WriteAsync(buffer, 0, read, token);
@@ -74,6 +88,10 @@ namespace AslainAssistant
             }
             if (expected > 0 && total != expected) throw new InvalidDataException("下载不完整，请重试。");
             if (progress != null) progress.Report(new Transfer { Received = total, Total = expected });
+        }
+        static void ObserveReadFailure(Task pending)
+        {
+            pending.ContinueWith(t=>{var ignored=t.Exception;},TaskContinuationOptions.OnlyOnFaulted);
         }
         public static void Verify(string file, string expectedHash)
         {
@@ -101,16 +119,25 @@ namespace AslainAssistant
             string target = Path.Combine(directory, "Aslains_WoWs_Modpack_Installer_v." + release.Version.FileTag + ".exe");
             if (File.Exists(target))
             {
-                try { await Task.Run(() => Verify(target, release.Sha256), token); return target; }
+                try { await Task.Run(() => Verify(target, release.Sha256), token); if(release.Size>0 && new FileInfo(target).Length!=release.Size)throw new InvalidDataException("缓存大小不匹配。"); return target; }
                 catch (InvalidDataException) { File.Delete(target); }
             }
             string part = target + ".part";
-            try
+            Exception failure = null;
+            foreach (string address in (release.MirrorUrls ?? new string[0]).Concat(new[] {release.Download.AbsoluteUri}).Distinct())
             {
+              try
+              {
                 using (var timeout = CancellationTokenSource.CreateLinkedTokenSource(token))
                 {
                     timeout.CancelAfter(TimeSpan.FromMinutes(30));
-                    using (var response = await Get(release.Download, timeout.Token))
+                    HttpResponseMessage response;
+                    using (var connect = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token))
+                    {
+                        connect.CancelAfter(TimeSpan.FromSeconds(15));
+                        response = address == release.Download.AbsoluteUri ? await Get(new Uri(address),connect.Token) : await GetMirror(new Uri(address),connect.Token);
+                    }
+                    using (response)
                     using (var source = await response.Content.ReadAsStreamAsync())
                     using (var file = new FileStream(part, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true))
                     {
@@ -119,11 +146,21 @@ namespace AslainAssistant
                         await CopyBounded(source, file, 1024L * 1024 * 1024, size, progress, timeout.Token);
                     }
                     await Task.Run(() => Verify(part, release.Sha256), timeout.Token);
+                    if (release.Size > 0 && new FileInfo(part).Length != release.Size) throw new InvalidDataException("安装包大小与版本清单不匹配。");
                     File.Move(part, target);
                 }
                 return target;
+              }
+              catch (Exception ex)
+              {
+                token.ThrowIfCancellationRequested();
+                if (!(ex is HttpRequestException || ex is OperationCanceledException || ex is IOException || ex is InvalidDataException)) throw;
+                failure=ex;
+                if (SourceNotice != null) SourceNotice("下载来源不可用，尝试下一来源："+ex.Message);
+              }
+              finally { if (File.Exists(part)) File.Delete(part); }
             }
-            finally { if (File.Exists(part)) File.Delete(part); }
+            throw new HttpRequestException("所有下载来源均失败。可在「客户端设置 → 国内镜像」打开蓝奏云备用下载，再导入安装包校验。",failure);
         }
         public void Dispose() { client.Dispose(); }
     }
@@ -200,7 +237,7 @@ namespace AslainAssistant
         readonly Installer installer;
         string reconciledLog = "";
         CancellationTokenSource cancellation;
-        public UpdateEngine(Settings settings, OfficialClient client, Installer setup) { Settings = settings; Client = client; installer = setup; }
+        public UpdateEngine(Settings settings, OfficialClient client, Installer setup) { Settings = settings; Client = client; installer = setup; Client.SourceNotice=text=>{if(Log!=null)Log(text);}; }
         public static ClientSnapshot ReadSnapshot(Settings settings,CancellationToken token)
         {
             using(var reader = new UpdateEngine(settings,new OfficialClient(),new Installer()))
@@ -348,8 +385,9 @@ namespace AslainAssistant
                 if (install && !interactive && !applyImported && Settings.ImportedPreset != null && Settings.Preset == null)
                 { State("尚无历史安装配置","请在插件配置页点击「使用该配置更新」安装已导入的预设。"); return; }
                 if (!NetworkAvailable()) { NetworkFailure("系统未检测到可用网络连接。",manual); return; }
-                State("查询官网版本", "正在连接 aslain.com…");
-                Release = await Client.Latest(cancellation.Token);
+                State("查询阿斯兰版本", "优先查询国内镜像；不可用时尝试官网…");
+                Release = await Client.LatestForGame(Game == null ? "" : Game.GameVersion,cancellation.Token);
+                if (Log != null) Log("版本来源："+Client.SourceDetail);
                 Settings.LastCheck = DateTimeOffset.Now.ToString("o"); Storage.Save(Settings);
                 UpdateDecision decision = UpdatePolicy.Decide(Game, Release);
                 if (decision == UpdateDecision.UnknownGame) { State("需要确认游戏版本", "无法确定当前游戏版本。请先用游戏启动器完成更新，再重试。"); return; }
@@ -357,21 +395,21 @@ namespace AslainAssistant
                 {
                     if (install && new Version(Release.Version.Game).CompareTo(new Version(Game.GameVersion)) > 0)
                     {
-                        State("提前缓存新版", "官网插件包适配 " + Release.Version.Game + "，当前游戏为 " + Game.GameVersion + "。仅下载，暂不安装。");
+                        State("提前缓存新版", "可用插件包适配 " + Release.Version.Game + "，当前游戏为 " + Game.GameVersion + "。仅下载，暂不安装。");
                         await Client.Download(Release, Path.Combine(Storage.Root, "downloads"), new Progress<Transfer>(p => { if (Progress != null) Progress(p); }), cancellation.Token);
                     }
-                    State("等待版本匹配", "游戏 " + Game.GameVersion + " 与官网插件包 " + Release.Version.Game + " 不匹配。客户端升级后会自动复查。"); return;
+                    State("等待版本匹配", "游戏 " + Game.GameVersion + " 与可用插件包 " + Release.Version.Game + " 不匹配。客户端升级后会自动复查。"); return;
                 }
-                if (decision == UpdateDecision.NewerInstalled) { State("本地版本更高", "官网当前发布的版本更旧，已保留本地版本。"); return; }
+                if (decision == UpdateDecision.NewerInstalled) { State("本地版本更高", "版本源提供的安装包更旧，已保留本地版本。"); return; }
                 string releaseKey = Release.Version.FileTag;
                 bool retry = Settings.FailedRelease == releaseKey || Settings.IncompleteRelease == releaseKey;
                 if (retry && (!manual || !install)) { State(Settings.IncompleteRelease == releaseKey ? "部分模组未安装完整" : "需要处理上次安装", string.IsNullOrEmpty(Settings.InstallIssue) ? "此版本上次安装失败或被取消。点击「使用历史配置更新」重试；不会自动反复安装。" : Settings.InstallIssue); return; }
-                if (decision == UpdateDecision.Current && !interactive && !retry && !applyImported) { State(string.IsNullOrEmpty(Settings.InstallIssue) ? "已是最新版本" : "版本最新，插件需要检查", string.IsNullOrEmpty(Settings.InstallIssue) ? Release.Version + (Settings.PendingPreset ? " · 另有导入预设待应用，请在插件配置页点击「使用该配置更新」。" : " · 下次按设定时间自动检查。") : Settings.InstallIssue); return; }
-                if (!install) { State("可以更新", "官网 " + Release.Version + "；点击「使用历史配置更新」安装。" + (Settings.PendingPreset ? "导入预设请在插件配置页点击「使用该配置更新」。" : "")); return; }
+                if (decision == UpdateDecision.Current && !interactive && !retry && !applyImported) { State(string.IsNullOrEmpty(Settings.InstallIssue) ? (Release.MirrorUrls.Length > 0 ? "镜像暂无更新" : "已是最新版本") : "版本最新，插件需要检查", string.IsNullOrEmpty(Settings.InstallIssue) ? Release.Version + " · " + Release.Source + (Settings.PendingPreset ? " · 另有导入预设待应用，请在插件配置页点击「使用该配置更新」。" : " · 下次按设定时间自动检查。") : Settings.InstallIssue); return; }
+                if (!install) { State("可以更新", Release.Source + " · " + Release.Version + "；点击「使用历史配置更新」安装。" + (Settings.PendingPreset ? "导入预设请在插件配置页点击「使用该配置更新」。" : "")); return; }
                 if (!manual && Settings.FailedRelease == releaseKey) { State("需要处理上次安装", "此版本上次安装失败或被取消。点击「使用历史配置更新」重试；后续新版本仍会检查。"); return; }
                 if (DeferForRunningGame(manual,action)) return;
                 if (manual) { Settings.FailedRelease = ""; Storage.Save(Settings); }
-                State("下载安装包", "仅使用官网直链，下载后自动校验 SHA-256。");
+                State("下载安装包", Release.Source + "；下载失败自动切换来源，安装前核对官网 SHA-256。");
                 var progress = new Progress<Transfer>(p => { if (Progress != null) Progress(p); });
                 string file = await Client.Download(Release, Path.Combine(Storage.Root, "downloads"), progress, cancellation.Token);
                 cancellation.Token.ThrowIfCancellationRequested();

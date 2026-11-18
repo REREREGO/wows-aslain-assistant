@@ -36,6 +36,9 @@ namespace AslainAssistant
         public PackVersion Version;
         public Uri Download;
         public string Sha256;
+        public string[] MirrorUrls = new string[0];
+        public long Size;
+        public string Source = "阿斯兰官网";
         public static Release Parse(string html)
         {
             // Restrict parsing to the actual classic-package heading, not metadata or the changelog.

@@ -52,6 +52,29 @@ namespace AslainAssistant
             first.Game = new GameState { GameVersion = "15.10.0", HasInstallation = true, Installed = PackVersion.Parse("15.10.0_08") };
             first.Release = new Release { Version = PackVersion.Parse("15.10.0_09") };
             Call(form,"RefreshUi");
+            Test("domestic mirror controls use library widgets and fit in both themes",()=>
+            {
+                pages.SelectedIndex=1;
+                foreach(int mode in new[]{1,0})
+                {
+                    ((AntdUI.Segmented)Field(form,"themeMode")).SelectIndex=mode;
+                    UiTheme.LayoutVisible(pages); Application.DoEvents();
+                    var toggle=(AntdUI.Segmented)Field(form,"themeMode");
+                    Assert(toggle.BorderWidth>=1 && toggle.ItemBorderWidth>=1 && toggle.BorderColor==AntdUI.Style.Db.BorderColor,"Theme selector border missing or not themed");
+                    using(var bitmap=new Bitmap(toggle.Width,toggle.Height))
+                    {
+                        toggle.DrawToBitmap(bitmap,new Rectangle(Point.Empty,toggle.Size));
+                        bitmap.Save(Path.Combine(Storage.Root,"theme-toggle-"+(mode==1?"dark":"light")+".png"));
+                    }
+                    foreach(string text in new[]{"版本源设置","蓝奏云下载","导入已下载的安装包"})
+                    {
+                        var control=FindControl(form,text);
+                        Assert(control is AntdUI.Button,"Mirror action is not a library button: "+text);
+                        Fits(control); Fits(control.Parent);
+                    }
+                }
+                pages.SelectedIndex=0;
+            });
             Test("manual install and reinstall route running-game warnings to the modal in both themes",()=>
             {
                 var warning=Field(form,"warnGameRunning"); var originalProbe=first.IsGameRunning;
@@ -387,6 +410,7 @@ namespace AslainAssistant
             Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false); UiTheme.Initialize();
             Control.CheckForIllegalCrossThreadCalls = true;
             Storage.Root = Path.GetFullPath(Path.Combine("artifacts","ui-tests-" + DateTime.Now.ToString("yyyyMMdd-HHmmss")));
+            new MirrorSettings {Feeds=new string[0]}.Save();
             Storage.Save(new Settings { GamePath = Path.Combine(Storage.Root,"absent-cn"), Name = "UI 测试国服" });
             Storage.Save(new Settings { Id = "intl", Server = "INTL", Name = "UI 测试外服", GamePath = Path.Combine(Storage.Root,"absent-intl"), CheckHours = 2 });
             if(Array.IndexOf(args,"--background-layout")>=0)

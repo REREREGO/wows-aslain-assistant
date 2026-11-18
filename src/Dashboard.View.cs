@@ -152,6 +152,8 @@ namespace AslainAssistant
             themeMode.Items.Add(new Ant.SegmentedItem { Text = "浅色", IconSvg = "SunOutlined" });
             themeMode.Items.Add(new Ant.SegmentedItem { Text = "深色", IconSvg = "MoonOutlined" });
             themeMode.Full = true; themeMode.Height = 42; themeMode.IconAlign = Ant.TAlignMini.Left; themeMode.IconRatio = 1.1f; themeMode.SelectIndex = preferences.Dark ? 1 : 0; themeMode.AccessibleName = "界面主题：浅色或深色";
+            themeMode.BorderWidth = 1.2f; themeMode.ItemBorderWidth = 1;
+            UiTheme.Bind(themeMode,()=>{themeMode.BorderColor=Ant.Style.Db.BorderColor;themeMode.ItemBorderColor=Ant.Style.Db.BorderColor;});
             themeMode.SelectIndexChanged += (s,e)=>Guard(ChangeTheme);
             var themeSection = UiTheme.Column(TextLabel("外观",26,9),themeMode); themeSection.Dock = DockStyle.Bottom; themeSection.Height = 82; themeSection.Gap = 6;
             sidebar.Controls.Add(clientTiles); sidebar.Controls.Add(themeSection); sidebar.Controls.Add(about); sidebar.Controls.Add(addClient); sidebar.Controls.Add(sidebarTitle);
@@ -160,7 +162,7 @@ namespace AslainAssistant
             var selection = new Ant.Panel { Height = 60, Dock = DockStyle.Top, Back = Color.Transparent };
             selectedLabel.Dock = DockStyle.Fill;
             selection.Controls.Add(selectedLabel);
-            var metrics = UiTheme.Grid("33.33% 33.33% 33.34%",Metric("游戏客户端",gameValue,"以当前客户端实际版本为准"),Metric("已安装阿斯兰",installedValue,"插件安装版本"),Metric("官网经典版",latestValue,"检查后显示最新发布"));
+            var metrics = UiTheme.Grid("33.33% 33.33% 33.34%",Metric("游戏客户端",gameValue,"以当前客户端实际版本为准"),Metric("已安装阿斯兰",installedValue,"插件安装版本"),Metric("可用经典版",latestValue,"按当前游戏版本匹配"));
             metrics.Dock = DockStyle.Top; metrics.Height = 132;
             pages.Dock = DockStyle.Fill; pages.Gap = 22;
             pages.EnablePageCloseByMouseMiddle = false; pages.EnablePageCloseByMouseDoubleClick = false; pages.EnablePageScrolling = false;
@@ -194,7 +196,9 @@ namespace AslainAssistant
             assistantUpdateStatus.Height = 64;
             var assistantActions = UiTheme.Actions(Button("检查助手更新",()=>{var task=CheckAssistant(true);},false,"SyncOutlined"),Button("项目与使用说明",()=>Process.Start(new ProcessStartInfo(AssistantUpdateClient.Repository){UseShellExecute=true}),false,"GithubOutlined"));
             var assistantCard = Card("助手更新 · 当前 "+selfUpdate.CurrentVersion.ToString(3),292,ToggleRow(assistantAutomatic,"自动接收助手新版","每 6 小时检查，安装时自动退出旧助手"),assistantUpdateStatus,assistantActions);
-            Page("客户端设置","SettingOutlined",UiTheme.Column(path,autoCard,startupCard,assistantCard));
+            var importInstaller=ClientButton("导入已下载的安装包",()=>{var task=ImportMirrorInstaller();},false,"ImportOutlined"); importInstaller.Width=210;
+            var mirrors = Card("国内镜像",280,TextLabel("优先从国内版本源检查更新。蓝奏云备用下载，提取码："+MirrorSettings.LanzouPassword,54),UiTheme.Actions(Button("版本源设置",ConfigureMirrors,false,"SettingOutlined"),Button("蓝奏云下载",()=>Process.Start(new ProcessStartInfo(MirrorSettings.LanzouFolder){UseShellExecute=true}),false,"CloudDownloadOutlined")),UiTheme.Actions(importInstaller));
+            Page("客户端设置","SettingOutlined",UiTheme.Column(path,autoCard,mirrors,startupCard,assistantCard));
 
             presetLabel.Height = 64;
             applyPreset = ClientButton("使用该配置更新",()=>{var task=ApplyImportedPreset();},true,"CloudDownloadOutlined");

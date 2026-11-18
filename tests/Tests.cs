@@ -245,9 +245,11 @@ namespace AslainAssistant
                     return 0;
                 }
                 root = Path.GetFullPath(Path.Combine("artifacts", "test-" + DateTime.Now.ToString("yyyyMMdd-HHmmss"))); Directory.CreateDirectory(root); Storage.Root = Path.Combine(root, "data");
+                new MirrorSettings {Feeds=new string[0]}.Save();
                 Run().GetAwaiter().GetResult();
                 RunPresetTests().GetAwaiter().GetResult();
                 passed += UpdateTests.Run(root).GetAwaiter().GetResult();
+                RunMirrorTests().GetAwaiter().GetResult();
                 if (args.Contains("--live"))
                 {
                     using (var client = new OfficialClient())

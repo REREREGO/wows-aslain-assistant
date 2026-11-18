@@ -1,0 +1,12 @@
+{
+  "Repository": "rererergo/aslain_versions",
+  "Branch": "master",
+  "InstallerRepository": "REREREGO/aslain_versions",
+  "InstallerBranch": "main",
+  "RetentionDays": 730,
+  "MaxRetainedBytes": 838860800,
+  "MaxAttachmentBytes": 1073741824,
+  "ProtectedGameVersions": [],
+  "LanzouFolder": "https://wwbcm.lanzouq.com/b01i60xlde",
+  "LanzouPassword": "6fpw"
+}

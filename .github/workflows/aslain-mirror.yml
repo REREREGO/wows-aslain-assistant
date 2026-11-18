@@ -1,0 +1,27 @@
+name: Maintain Aslain domestic mirror
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+permissions:
+  contents: read
+concurrency:
+  group: aslain-domestic-mirror
+  cancel-in-progress: false
+jobs:
+  sync:
+    if: vars.ASLAIN_MIRROR_ENABLED == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build trusted parser and downloader
+        shell: powershell
+        run: .\build.ps1 -OutputDirectory build
+      - name: Sync GitCode installers and Gitee catalog
+        shell: powershell
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_MIRROR_TOKEN }}
+          GITCODE_TOKEN: ${{ secrets.GITCODE_MIRROR_TOKEN }}
+          MIRROR_SIGNING_KEY_XML: ${{ secrets.ASLAIN_MIRROR_SIGNING_KEY_XML }}
+        run: .\tools\Sync-AslainMirror.ps1 -Publish
