@@ -85,17 +85,12 @@
 
 个人制作的非官方工具，阿斯兰模组包来自 [Aslain](https://aslain.com/)。made with GPT 6 Astra。
 
-## 全部版本下载
+## 版本下载
 
-包括最新版和全部历史发行版，暂不限制保留数量。
+从 1.0.1 开始记录，包含最新及后续历史版本，暂不限制保留数量。
 
 | 版本 | 主要变化 | 安装包 |
 | --- | --- | --- |
 | **1.0.1（最新）** | 国内版本源与下载镜像、助手版本自检 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.1/AslainAssistant.Setup.exe) |
-| 1.4.4 | 托盘单击打开 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.4.4/AslainAssistant.Setup.exe) |
-| 1.4.3 | 导入配置后直接应用 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.4.3/AslainAssistant.Setup.exe) |
-| 1.4.2 | 修复打开延迟和客户端列表 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.4.2/AslainAssistant.Setup.exe) |
-| 1.4.1 | 支持删除客户端 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.4.1/AslainAssistant.Setup.exe) |
-| 1.4.0 | 单实例、助手自动更新、断网恢复 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.4.0/AslainAssistant.Setup.exe) |
 
 [查看全部发行记录](https://github.com/REREREGO/wows-aslain-assistant/releases)
