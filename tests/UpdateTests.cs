@@ -90,7 +90,7 @@ namespace AslainAssistant
                 var workflow=new FakeHttp {Respond=r=>new HttpResponseMessage(HttpStatusCode.OK){Content=r.RequestUri.AbsolutePath.EndsWith(".json") ? (HttpContent)new StringContent(signed) : new ByteArrayContent(package)}};
                 using(var engine=new SelfUpdateEngine(Path.Combine(root,"self-workflow"),new AssistantUpdateClient(workflow,publicKey),true))
                 {
-                    int launches=0; engine.CurrentVersion=new Version(1,3,0,0); engine.NetworkAvailable=()=>true; engine.CanInstall=()=>false;
+                    int launches=0; engine.CurrentVersion=new Version(0,0,0,0); engine.NetworkAvailable=()=>true; engine.CanInstall=()=>false;
                     engine.Launch=file=>{launches++;AssistantUpdateClient.Verify(file,release);return Task.FromResult(0);};
                     await engine.Run(false); Assert(launches==0 && engine.Status.Contains("等待"),"Self-update interrupted a busy game");
                     engine.CanInstall=()=>true; engine.NetworkAvailable=()=>false;

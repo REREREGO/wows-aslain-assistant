@@ -39,19 +39,24 @@ namespace AslainAssistant
                     if(info.ProductName!="窝窝斯坐牢小助手") continue;
                     bool legacy=info.FileMajorPart<1 || (info.FileMajorPart==1 && info.FileMinorPart<4);
                     if(legacyOnly && !legacy) continue;
-                    if(!reveal) return true;
-                    if(Send(process.Id,Activate)==Ready) return true;
+                    if(!legacyOnly && !reveal) return true;
+                    if(reveal && Send(process.Id,Activate)==Ready) return true;
                     // Another simultaneous launcher may not own the mutex or a window.
                     if(!legacy) continue;
-                    // Compatibility with the 1.3 release, including a hidden tray window.
+                    // Version numbering may restart for local builds. A process
+                    // without a window can be another launcher exiting at the mutex,
+                    // so only an actual legacy window counts as a running instance.
+                    bool foundWindow=false;
                     EnumWindows((window,state)=>
                     {
                         uint pid; GetWindowThreadProcessId(window,out pid); if(pid!=process.Id) return true;
                         var title=new StringBuilder(256); GetWindowText(window,title,title.Capacity);
                         if(!title.ToString().StartsWith("窝窝斯坐牢小助手")) return true;
-                        ShowWindowAsync(window,9); ShowWindowAsync(window,5); SetForegroundWindow(window); return false;
+                        foundWindow=true;
+                        if(reveal) {ShowWindowAsync(window,9); ShowWindowAsync(window,5); SetForegroundWindow(window);}
+                        return false;
                     },IntPtr.Zero);
-                    return true;
+                    if(foundWindow) return true;
                 }
                 catch(InvalidOperationException) { }
                 catch(System.ComponentModel.Win32Exception) { }

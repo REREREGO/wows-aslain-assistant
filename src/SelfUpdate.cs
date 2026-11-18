@@ -221,6 +221,7 @@ namespace AslainAssistant
         {
             root=directory; client=transport; allowed=allow; Settings=AssistantUpdateSettings.Load(root);
             if(!allowed) Status="演示 / 测试配置不执行助手自更新。";
+            else if(!Settings.Enabled) Status="助手自动更新已暂停，可以手动检查。";
         }
         void State(string text) { Status=text; if(Changed!=null) Changed(); if(Log!=null) Log(text); }
         public void SetEnabled(bool enabled) { Settings.Enabled=enabled; Settings.Save(root); NextCheck=DateTimeOffset.Now.AddSeconds(15); State(enabled ? "已开启助手自动更新，每 6 小时检查。" : "助手自动更新已暂停，可以手动检查。"); }
