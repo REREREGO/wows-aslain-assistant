@@ -1,12 +1,14 @@
 param(
     [Parameter(Mandatory=$true)][string]$Version,
-    [string]$Package = (Join-Path $PSScriptRoot '..\release\AslainAssistant.Setup.exe'),
+    [string]$Package,
     [string[]]$DownloadUrls,
     [string]$KeyPath = (Join-Path $env:LOCALAPPDATA 'WoWS-Aslain-Assistant-Release\signing-key.xml'),
     [string]$Output = (Join-Path $PSScriptRoot '..\updates\latest.json')
 )
 $ErrorActionPreference = 'Stop'
-if (!$DownloadUrls) { $DownloadUrls = @('https://github.com/REREREGO/wows-aslain-assistant/releases/download/v' + $Version + '/AslainAssistant.Setup.exe') }
+$packageName = 'AslainAssistant.Setup.' + $Version + '.exe'
+if (!$Package) { $Package = Join-Path $PSScriptRoot ('..\release\' + $packageName) }
+if (!$DownloadUrls) { $DownloadUrls = @('https://github.com/REREREGO/wows-aslain-assistant/releases/download/v' + $Version + '/' + $packageName) }
 $payload = [ordered]@{ Schema=1; Application='WoWS-Aslain-Assistant'; Version=$Version; Urls=$DownloadUrls; Sha256=(Get-FileHash -LiteralPath $Package -Algorithm SHA256).Hash.ToLowerInvariant(); Size=(Get-Item -LiteralPath $Package).Length; PublishedUtc=[DateTimeOffset]::UtcNow.ToString('o') }
 $bytes = [Text.Encoding]::UTF8.GetBytes(($payload | ConvertTo-Json -Depth 4 -Compress))
 $rsa = [Security.Cryptography.RSACryptoServiceProvider]::new()

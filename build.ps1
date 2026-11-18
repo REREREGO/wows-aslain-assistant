@@ -34,4 +34,7 @@ $uiPayload = '/resource:' + $library + ',AntdUIPayload'
 $licensePayload = '/resource:' + $license + ',AntdUILicense'
 & $compiler /nologo /utf8output /target:winexe /platform:anycpu /optimize+ /win32manifest:app.manifest /main:AslainAssistant.SetupBootstrap $setupOutput $payload $uiPayload $licensePayload @branding @references packaging\Setup.cs packaging\SetupBootstrap.cs packaging\InstallOperations.cs src\InstanceControl.cs src\Brand.cs src\UiTheme.cs src\UiPreferences.cs src\AssemblyInfo.cs
 if ($LASTEXITCODE -ne 0) { throw '安装程序编译失败。' }
+$setupPath = Join-Path $OutputDirectory 'AslainAssistant.Setup.exe'
+$setupVersion = ([Version][Diagnostics.FileVersionInfo]::GetVersionInfo($setupPath).FileVersion).ToString(3)
+Copy-Item -LiteralPath $setupPath -Destination (Join-Path $OutputDirectory ('AslainAssistant.Setup.' + $setupVersion + '.exe')) -Force
 Write-Host "已生成应用、安装程序和测试程序：$OutputDirectory"

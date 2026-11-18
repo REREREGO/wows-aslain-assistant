@@ -16,7 +16,7 @@
 
 1. 确认 `src/AssemblyInfo.cs` 使用用户指定的版本号，不自行递增；更新 README、实际界面截图及文末的全部版本下载列表。
 2. 构建正式文件，运行业务测试和界面测试。
-3. 在 GitHub 创建对应标签的草稿 Release，上传 `AslainAssistant.Setup.exe`。
+3. 在 GitHub 创建对应标签的草稿 Release，上传带版本号的安装包，例如 `AslainAssistant.Setup.1.0.1.exe`。构建脚本按程序集版本自动生成该文件；不带版本号的副本仅供本地脚本使用。
 4. 用 `tools/Sign-Release.ps1` 生成 `updates/latest.json`，下载地址必须指向这次 Release 的安装器。可同时填入该资产的 GitHub API 下载地址作为备用。
 5. 将 `latest.json` 作为 Release 资产上传，并提交到仓库的 `updates/latest.json`。
 6. 确认安装器与签名对应后，将草稿 Release 发布并明确设为 Latest（API `make_latest: "true"`）。1.0.1 的编号低于历史 1.4.x，不能依赖按版本号推断最新版。

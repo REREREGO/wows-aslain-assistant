@@ -6,7 +6,7 @@
 
 选一次插件，以后让它定期检查、下载并安装。国服、外服分开管理；也能直接导入群友的配置，省得对着截图挨个勾选。
 
-**[下载 1.0.1 安装包](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.1/AslainAssistant.Setup.exe)** · [更新说明](https://github.com/REREREGO/wows-aslain-assistant/releases/tag/v1.0.1) · [反馈问题](https://github.com/REREREGO/wows-aslain-assistant/issues)
+**[下载 1.0.1 安装包](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.1/AslainAssistant.Setup.1.0.1.exe)** · [更新说明](https://github.com/REREREGO/wows-aslain-assistant/releases/tag/v1.0.1) · [反馈问题](https://github.com/REREREGO/wows-aslain-assistant/issues)
 
 适用于 Windows，需要 .NET Framework 4.8。更新的是阿斯兰**经典模组包**。
 
@@ -91,6 +91,6 @@
 
 | 版本 | 主要变化 | 安装包 |
 | --- | --- | --- |
-| **1.0.1（最新）** | 国内版本源与下载镜像、助手版本自检 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.1/AslainAssistant.Setup.exe) |
+| **1.0.1（最新）** | 国内版本源与下载镜像、助手版本自检 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.1/AslainAssistant.Setup.1.0.1.exe) |
 
 [查看全部发行记录](https://github.com/REREREGO/wows-aslain-assistant/releases)
