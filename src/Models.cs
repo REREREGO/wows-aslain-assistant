@@ -179,11 +179,20 @@ namespace AslainAssistant
                 if (settings.Id != Path.GetFileNameWithoutExtension(file)) throw new InvalidDataException("客户端配置与文件名不一致。");
                 result.Add(settings);
             }
-            if (result.Count == 0) { result.Add(new Settings()); result.Add(new Settings { Id = "intl", Name = "外服客户端", Server = "INTL" }); }
+            // An existing, empty directory means the user removed every client.
+            if (!Directory.Exists(dir)) { result.Add(new Settings()); result.Add(new Settings { Id = "intl", Name = "外服客户端", Server = "INTL" }); }
             if (result.Count > 20) throw new InvalidDataException("最多管理 20 个客户端。");
             return result.OrderBy(x => x.Server == "CN" ? 0 : 1).ThenBy(x => x.Name).ToList();
         }
         public static void Save(Settings settings) { settings.Validate(); AtomicWrite(Path.Combine(Root, "profiles", settings.Id + ".json"), Json().Serialize(settings)); }
+        public static void DeleteClient(string id)
+        {
+            if (id == null || !Regex.IsMatch(id, "^[a-z0-9-]{1,40}$")) throw new InvalidDataException("客户端配置编号无效。");
+            string directory = Path.Combine(Root,"profiles");
+            Directory.CreateDirectory(directory);
+            // Only the assistant's profile is removed. Never traverse the game path.
+            File.Delete(Path.Combine(directory,id + ".json"));
+        }
         public static string Export(Settings settings)
         {
             return Json().Serialize(new Backup { Format = "wows-aslain-assistant", Schema = 1, ExportedAt = DateTimeOffset.Now.ToString("o"), Settings = settings.Validate() });

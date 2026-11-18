@@ -16,6 +16,7 @@ namespace AslainAssistant
         readonly List<UpdateEngine> engines = new List<UpdateEngine>();
         readonly Dictionary<UpdateEngine, Ant.Button> tiles = new Dictionary<UpdateEngine, Ant.Button>();
         readonly List<Control> mutable = new List<Control>();
+        readonly List<Control> clientControls = new List<Control>();
         readonly Ant.StackPanel clientTiles = new Ant.StackPanel();
         readonly Ant.Input gamePath = new Ant.Input(), logs = new Ant.Input();
         readonly Ant.Label gameValue = UiTheme.Label("—",22,true), installedValue = UiTheme.Label("—",22,true), latestValue = UiTheme.Label("待检查",22,true);
@@ -37,9 +38,11 @@ namespace AslainAssistant
         readonly Timer timer = new Timer();
         readonly bool background;
         UpdateEngine selected;
-        Ant.Button cancel, update;
+        Ant.Button cancel, update, deleteClient, addClient;
         Ant.Panel statusCard;
         bool binding, quitting, booted;
+        bool confirmingDelete;
+        Func<Settings,bool> confirmDelete;
         DateTimeOffset lastLocalPoll = DateTimeOffset.MinValue;
 
         public Dashboard(bool startHidden)
@@ -56,6 +59,7 @@ namespace AslainAssistant
             ClientSize = new Size(1160,820); MinimumSize = new Size(980,640);
             StartPosition = FormStartPosition.CenterScreen; Icon = Brand.LoadIcon();
             AutoScaleDimensions = new SizeF(96,96); AutoScaleMode = AutoScaleMode.Dpi;
+            confirmDelete = ConfirmClientDeletion;
             BuildUi();
             pages.SelectedIndex = preferences.PageIndex;
             pages.SelectedIndexChanged += (s,e)=>Guard(()=>{if (!booted) return; preferences.PageIndex = pages.SelectedIndex; preferences.Save(Storage.Root);});
@@ -82,6 +86,10 @@ namespace AslainAssistant
         Ant.Button Button(string text, Action action, bool primary = false, string icon = null)
         {
             var button = UiTheme.Button(text,()=>Guard(action),primary,icon); mutable.Add(button); return button;
+        }
+        Ant.Button ClientButton(string text, Action action, bool primary = false, string icon = null)
+        {
+            var button = Button(text,action,primary,icon); clientControls.Add(button); return button;
         }
         void Guard(Action action)
         {
@@ -131,14 +139,14 @@ namespace AslainAssistant
             UiTheme.Bind(sidebar,()=>{sidebar.Back = UiTheme.Surface; sidebar.BorderColor = UiTheme.Border;});
             var sidebarTitle = TextLabel("游戏客户端",38,11,true); sidebarTitle.Dock = DockStyle.Top;
             clientTiles.Dock = DockStyle.Fill; clientTiles.Vertical = true; clientTiles.Gap = 10; clientTiles.AutoScroll = true; clientTiles.BackColor = Color.Transparent;
-            var add = Button("添加客户端",AddClient,false,"PlusOutlined"); add.Dock = DockStyle.Bottom;
+            addClient = Button("添加客户端",AddClient,false,"PlusOutlined"); addClient.Dock = DockStyle.Bottom;
             var about = TextLabel("Ctrl + 1–4 切换功能页\n关闭窗口后继续在托盘守护",62,8.5f); UiTheme.Secondary(about); about.Dock = DockStyle.Bottom;
             themeMode.Items.Add(new Ant.SegmentedItem { Text = "浅色", IconSvg = "SunOutlined" });
             themeMode.Items.Add(new Ant.SegmentedItem { Text = "深色", IconSvg = "MoonOutlined" });
             themeMode.Full = true; themeMode.Height = 42; themeMode.IconAlign = Ant.TAlignMini.Left; themeMode.IconRatio = 1.1f; themeMode.SelectIndex = preferences.Dark ? 1 : 0; themeMode.AccessibleName = "界面主题：浅色或深色";
             themeMode.SelectIndexChanged += (s,e)=>Guard(ChangeTheme);
             var themeSection = UiTheme.Column(TextLabel("外观",26,9),themeMode); themeSection.Dock = DockStyle.Bottom; themeSection.Height = 82; themeSection.Gap = 6;
-            sidebar.Controls.Add(clientTiles); sidebar.Controls.Add(themeSection); sidebar.Controls.Add(about); sidebar.Controls.Add(add); sidebar.Controls.Add(sidebarTitle);
+            sidebar.Controls.Add(clientTiles); sidebar.Controls.Add(themeSection); sidebar.Controls.Add(about); sidebar.Controls.Add(addClient); sidebar.Controls.Add(sidebarTitle);
             var main = new Ant.Panel { Dock = DockStyle.Fill, Back = UiTheme.Background, Radius = 0, Padding = new Padding(24,14,24,14) };
             UiTheme.Bind(main,()=>main.Back = UiTheme.Background);
             var selection = new Ant.Panel { Height = 60, Dock = DockStyle.Top, Back = Color.Transparent };
@@ -154,20 +162,23 @@ namespace AslainAssistant
             statusLabel.Height = 34; statusLabel.ForeColor = blue; detailLabel.Height = 68; detailLabel.AutoEllipsis = true;
             progress.Height = 12; progress.Value = 0; progress.Radius = 4; progress.Visible = false; UiTheme.Bind(progress,()=>progress.Fill = blue);
             var statusContent = UiTheme.Column(statusLabel,detailLabel,progress); statusContent.Gap = 8; statusContent.AutoScroll = false; statusCard.Controls.Add(statusContent);
-            update = Button("立即更新",()=>{var task=RunSelected(true,false);},true,"CloudDownloadOutlined"); update.Width = 148;
+            update = ClientButton("立即更新",()=>{var task=RunSelected(true,false);},true,"CloudDownloadOutlined"); update.Width = 148;
             cancel = Button("取消下载",()=>{var active=engines.FirstOrDefault(x=>x.Busy);if(active!=null)active.Cancel();},false,"CloseOutlined"); mutable.Remove(cancel);
-            var primaryActions = UiTheme.Actions(update,Button("仅检查版本",()=>{var task=RunSelected(false,false);},false,"SyncOutlined"),Button("查看处理方案",ShowRepairAdvice,false,"QuestionCircleOutlined"),cancel);
+            var primaryActions = UiTheme.Actions(update,ClientButton("仅检查版本",()=>{var task=RunSelected(false,false);},false,"SyncOutlined"),ClientButton("查看处理方案",ShowRepairAdvice,false,"QuestionCircleOutlined"),cancel);
             var ruleText = TextLabel("同一游戏版本：沿用插件选择自动安装更新。\n游戏版本不匹配：先缓存新版，等待客户端更新后再安装。\n游戏运行中：等待游戏退出。",90);
             var rules = Card("更新规则",162,ruleText); rules.Padding = new Padding(16);
             Page("更新概览","DashboardOutlined",UiTheme.Column(statusCard,primaryActions,rules));
 
             gamePath.ReadOnly = true; gamePath.Height = 44; gamePath.PrefixSvg = "FolderOutlined"; gamePath.PlaceholderText = "先选择这个客户端的游戏根目录"; gamePath.AccessibleName = "游戏根目录";
-            var path = Card("游戏安装目录",192,gamePath,UiTheme.Actions(Button("选择游戏目录",BrowsePath,false,"FolderOpenOutlined"),Button("自动发现",DiscoverPaths,false,"SearchOutlined"),Button("编辑客户端",EditClient,false,"EditOutlined")));
+            deleteClient = ClientButton("删除客户端",DeleteClient,false,"DeleteOutlined"); deleteClient.Type = Ant.TTypeMini.Error; deleteClient.Ghost = true; deleteClient.AccessibleName = "删除当前客户端配置";
+            var path = Card("游戏安装目录",192,gamePath,UiTheme.Actions(Button("选择游戏目录",BrowsePath,false,"FolderOpenOutlined"),Button("自动发现",DiscoverPaths,false,"SearchOutlined"),Button("编辑客户端",EditClient,false,"EditOutlined"),deleteClient));
+            clientControls.Add(path);
             automatic.CheckedChanged += (s,e)=>Guard(SaveSwitches);
             hours.Minimum = 1; hours.Maximum = 24; hours.Value = 1; hours.DecimalPlaces = 0; hours.AlwaysShowControl = true; hours.WheelModifyEnabled = false; hours.Height = 44; hours.Width = 140; hours.SuffixText = "小时"; hours.AccessibleName = "自动检查间隔（小时）";
             hours.ValueChanged += (s,e)=>Guard(SaveSwitches); mutable.Add(hours);
             var intervalLabel = TextLabel("检查频率",44); intervalLabel.Width = 100;
             var autoCard = Card("自动更新",200,ToggleRow(automatic,"自动下载并更新此客户端","仅应用于左侧选中的客户端"),UiTheme.Actions(intervalLabel,hours));
+            clientControls.Add(autoCard);
             startup.CheckedChanged += (s,e)=>Guard(()=>{if(binding)return;Startup.Set(startup.Checked,Application.ExecutablePath);AddLog(startup.Checked?"已开启开机登录自启。":"已关闭开机自启。");});
             var startupCard = Card("助手设置",146,ToggleRow(startup,"开机登录后启动助手","所有客户端共用此设置"));
             assistantAutomatic.Checked = selfUpdate.Allowed && selfUpdate.Settings.Enabled;
@@ -181,12 +192,13 @@ namespace AslainAssistant
             var presets = Card("当前插件预设",208,presetLabel,UiTheme.Actions(Button("读取已装配置",ReadInstalledPreset,false,"ReloadOutlined"),Button("导入配置",Import,false,"ImportOutlined"),Button("导出配置",Export,false,"ExportOutlined")));
             var chooseButton = Button("选择插件 / 重装",()=>{var task=RunSelected(true,true);},true,"AppstoreOutlined"); chooseButton.Width = 174;
             var choose = Card("管理插件选择",196,TextLabel("首次在阿斯兰安装器中选择插件；之后更新会沿用此客户端的预设。",48),UiTheme.Actions(chooseButton));
+            clientControls.Add(presets); clientControls.Add(choose);
             var format = Card("配置文件",132,TextLabel("支持 JSON、INF 和阿斯兰 REG。每个客户端分别保存目录、插件和检查频率。",48));
             Page("插件配置","AppstoreOutlined",UiTheme.Column(presets,choose,format));
 
             logs.Dock = DockStyle.Fill; logs.Multiline = true; logs.ReadOnly = true; logs.AutoScroll = true; logs.WordWrap = true; UiTheme.Bind(logs,()=>logs.BackColor = UiTheme.Surface); logs.Font = new Font("Microsoft YaHei UI",9); logs.AccessibleName = "助手运行日志";
             var logContainer = new Ant.Panel { Dock = DockStyle.Fill, Back = Color.Transparent };
-            var logActions = UiTheme.Actions(Button("打开日志目录",()=>{System.IO.Directory.CreateDirectory(Storage.Root);Process.Start(new ProcessStartInfo(Storage.Root){UseShellExecute=true});},false,"FolderOpenOutlined"),Button("查看处理方案",ShowRepairAdvice,false,"QuestionCircleOutlined")); logActions.Dock = DockStyle.Bottom;
+            var logActions = UiTheme.Actions(Button("打开日志目录",()=>{System.IO.Directory.CreateDirectory(Storage.Root);Process.Start(new ProcessStartInfo(Storage.Root){UseShellExecute=true});},false,"FolderOpenOutlined"),ClientButton("查看处理方案",ShowRepairAdvice,false,"QuestionCircleOutlined")); logActions.Dock = DockStyle.Bottom;
             logContainer.Controls.Add(logs); logContainer.Controls.Add(logActions);
             Page("运行日志","FileTextOutlined",logContainer);
             main.Controls.Add(pages); main.Controls.Add(scheduleLabel); main.Controls.Add(metrics); main.Controls.Add(selection);

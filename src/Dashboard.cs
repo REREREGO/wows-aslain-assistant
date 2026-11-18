@@ -17,8 +17,8 @@ namespace AslainAssistant
             try
             {
                 foreach (Settings settings in Storage.LoadAll()) AddEngine(settings);
-                selected = engines[0];
-                var found = await Task.Run(() => GameDetector.Discover());
+                selected = engines.FirstOrDefault();
+                var found = engines.Count == 0 ? new List<string>() : await Task.Run(() => GameDetector.Discover());
                 foreach (var engine in engines)
                 {
                     if (string.IsNullOrEmpty(engine.Settings.GamePath))
@@ -55,20 +55,19 @@ namespace AslainAssistant
         }
         void Bind()
         {
-            if (selected == null) return;
             binding = true;
-            gamePath.Text = selected.Settings.GamePath;
-            automatic.Checked = selected.Settings.AutoUpdate; hours.Value = selected.Settings.CheckHours;
+            gamePath.Text = selected == null ? "" : selected.Settings.GamePath;
+            automatic.Checked = selected != null && selected.Settings.AutoUpdate; hours.Value = selected == null ? 1 : selected.Settings.CheckHours;
             startup.Checked = Startup.Enabled;
             binding = false; progress.Value = 0; progress.Loading = false; RefreshUi();
         }
         void RefreshUi()
         {
-            if (selected == null) return;
-            bool busy = engines.Any(x => x.Busy) || selfUpdate.Busy || shutdownForUpdate;
+            bool busy = engines.Any(x => x.Busy) || selfUpdate.Busy || shutdownForUpdate || confirmingDelete;
             foreach (Control control in mutable) control.Enabled = !busy && booted;
-            cancel.Enabled = busy && !engines.Any(x => x.Installing);
-            if(selfUpdate.Busy || shutdownForUpdate) cancel.Enabled=false;
+            foreach (Control control in clientControls) control.Enabled = selected != null && !busy && booted;
+            cancel.Enabled = engines.Any(x => x.Busy) && !engines.Any(x => x.Installing);
+            if(selfUpdate.Busy || shutdownForUpdate || confirmingDelete) cancel.Enabled=false;
             assistantAutomatic.Enabled=selfUpdate.Allowed && !busy;
             assistantUpdateStatus.Text=selfUpdate.Status;
             foreach (var pair in tiles)
@@ -77,6 +76,18 @@ namespace AslainAssistant
                 pair.Value.Text = s.Name + "\n" + (string.IsNullOrEmpty(s.GamePath) ? "待选择游戏目录" : pair.Key.Busy ? pair.Key.Status : s.AutoUpdate ? "自动守护中 · " + s.CheckHours + " 小时 / 次" : "手动模式");
                 pair.Value.Type = pair.Key == selected ? AntdUI.TTypeMini.Primary : AntdUI.TTypeMini.Default;
                 pair.Value.Ghost = pair.Key == selected; pair.Value.BorderWidth = pair.Key == selected ? 1 : 0;
+            }
+            serverTag.Visible = selected != null;
+            if (selected == null)
+            {
+                gameValue.Text = installedValue.Text = latestValue.Text = "—";
+                selectedLabel.Text = "未添加客户端";
+                presetLabel.Text = "添加客户端后，可以读取或导入插件配置。";
+                statusLabel.Text = "还没有客户端"; statusLabel.ForeColor = blue;
+                detailLabel.Text = "点击左下角「添加客户端」，选择游戏目录后开始使用。";
+                update.Text = "立即更新"; progress.Visible = false; progress.Loading = false; progress.Value = 0;
+                scheduleLabel.Text = "暂无客户端 · 可随时添加国服或外服客户端";
+                return;
             }
             var game = selected.Game;
             gameValue.Text = game == null ? "未读取" : string.IsNullOrEmpty(game.GameVersion) ? "待确认" : game.GameVersion;
@@ -211,6 +222,33 @@ namespace AslainAssistant
         }
         void AddClient() { EditClientDialog(true); }
         void EditClient() { EditClientDialog(false); }
+        bool ConfirmClientDeletion(Settings settings)
+        {
+            return AntdUI.Modal.open(new AntdUI.Modal.Config(this,"删除客户端？",
+                "将从助手中移除「" + settings.Name + "」及其插件预设。\n游戏文件和已安装的模组会保留。",AntdUI.TType.Warn)
+                { OkText = "删除", CancelText = "取消", MaskClosable = false, Width = 540 }) == DialogResult.OK;
+        }
+        void DeleteClient()
+        {
+            var target = selected;
+            if (target == null || confirmingDelete || engines.Any(x=>x.Busy) || selfUpdate.Busy || shutdownForUpdate) return;
+            confirmingDelete = true; RefreshUi();
+            try
+            {
+                if (!confirmDelete(target.Settings)) return;
+                // Persist first: if the file is locked or inaccessible, keep the UI and engine.
+                Storage.DeleteClient(target.Settings.Id);
+                int index = engines.IndexOf(target);
+                engines.Remove(target);
+                var tile = tiles[target]; tiles.Remove(target); clientTiles.Controls.Remove(tile); tile.Dispose();
+                target.Dispose();
+                selected = engines.Count == 0 ? null : engines[Math.Min(index,engines.Count-1)];
+                Bind();
+                if (selected == null) pages.SelectedIndex = 0;
+                AddLog("已删除客户端「" + target.Settings.Name + "」，游戏和模组文件已保留。");
+            }
+            finally { confirmingDelete = false; RefreshUi(); }
+        }
         void EditClientDialog(bool add)
         {
             if (add && engines.Count >= 20) throw new InvalidDataException("最多管理 20 个客户端。");
@@ -239,18 +277,18 @@ namespace AslainAssistant
         }
         async Task RunSelected(bool install, bool interactive)
         {
-            if (selected == null || engines.Any(x => x.Busy) || selfUpdate.Busy || shutdownForUpdate) return;
+            if (selected == null || engines.Any(x => x.Busy) || selfUpdate.Busy || shutdownForUpdate || confirmingDelete) return;
             await selected.Run(install, interactive, true);
         }
         async Task CheckAll(bool update)
         {
-            if (!booted || engines.Any(x => x.Busy) || selfUpdate.Busy || shutdownForUpdate) return;
+            if (!booted || engines.Any(x => x.Busy) || selfUpdate.Busy || shutdownForUpdate || confirmingDelete) return;
             foreach (var engine in engines.Where(x => !string.IsNullOrEmpty(x.Settings.GamePath) && (!update || x.Settings.AutoUpdate)).ToArray()) await engine.Run(update, false, true);
         }
         async Task Tick()
         {
             if(shutdownForUpdate && DateTime.UtcNow>shutdownLease) { shutdownForUpdate=false; RefreshUi(); }
-            if (!booted || shutdownForUpdate) return;
+            if (!booted || shutdownForUpdate || confirmingDelete) return;
             bool available=System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable();
             if(available && !networkWasAvailable)
             {
@@ -278,7 +316,7 @@ namespace AslainAssistant
         }
         async Task CheckAssistant(bool manual)
         {
-            if(!booted || shutdownForUpdate || engines.Any(x=>x.Busy) || selfUpdate.Busy) return;
+            if(!booted || shutdownForUpdate || confirmingDelete || engines.Any(x=>x.Busy) || selfUpdate.Busy) return;
             await selfUpdate.Run(manual);
         }
         byte HandleInstanceCommand(byte command)
@@ -286,7 +324,7 @@ namespace AslainAssistant
             if(command==InstanceControl.Activate) { Reveal(); return InstanceControl.Ready; }
             if(command==InstanceControl.Resume) { shutdownForUpdate=false; RefreshUi(); return InstanceControl.Ready; }
             if(command!=InstanceControl.Exit) return InstanceControl.Unavailable;
-            if(engines.Any(x=>x.Installing) || GameDetector.InstallerRunning()) return InstanceControl.Busy;
+            if(confirmingDelete || engines.Any(x=>x.Installing) || GameDetector.InstallerRunning()) return InstanceControl.Busy;
             shutdownForUpdate=true; shutdownLease=DateTime.UtcNow.AddSeconds(30);
             foreach(var engine in engines) engine.Cancel();
             selfUpdate.Cancel();

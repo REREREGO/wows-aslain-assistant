@@ -107,6 +107,29 @@ namespace AslainAssistant
             Test("INF round-trip never imports foreign install paths or commands", () => { var p = Preset.FromInf("[Setup]\nDir=C:\\other\nComponents=markers,markers\\speed_indicator\nTasks=install_clean\nLang=cn\nRun=calc.exe"); string inf = p.ToInf(@"D:\游戏\World of Warships"); Assert(!inf.Contains("C:\\other") && !inf.Contains("calc.exe"), "whitelisted fields"); Assert(Preset.FromInf(inf).Components == p.Components, "round trip"); Throws(() => Preset.FromInf("[Setup]\nComponents=a\" /DIR=bad"), "reject parameter injection"); Throws(() => Preset.FromInf("[Setup]\nComponents="), "empty preset rejected"); Throws(() => Preset.FromInf("[Setup]\nComponents=a\nComponents=b"), "duplicate fields rejected"); });
             Test("REG importer reads only WoWs settings and never executes registry content", () => { string reg = "Windows Registry Editor Version 5.00\n[HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\Aslains_WoWs_Modpack_Installer_is1]\n\"Inno Setup: Selected Components\"=\"markers,markers\\\\speed_indicator\"\n\"Inno Setup: Selected Tasks\"=\"install_clean\"\n\"Inno Setup: Language\"=\"cn\"\n[HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run]\n\"evil\"=\"calc.exe\""; var p = Preset.FromReg(reg); Assert(p.Components == @"markers,markers\speed_indicator", "unescape"); Assert(!p.ToInf("").Contains("calc"), "unrelated reg values discarded"); Throws(() => Preset.FromReg(reg.Replace("WoWs", "WoT")), "WoT preset rejected"); });
             Test("client profiles isolate paths, preset and auto-update", () => { var a = Config("client-a"); var b = Config("client-b"); b.Server = "INTL"; b.Preset.Components = "camera"; Storage.Save(a); Storage.Save(b); var all = Storage.LoadAll(); Assert(all.Single(x => x.Id == a.Id).Preset.Components != all.Single(x => x.Id == b.Id).Preset.Components, "separate state"); string file = Path.Combine(root, "backup.json"); File.WriteAllText(file, Storage.Export(b)); a.AutoUpdate = true; var imported = Storage.Import(file, a); Assert(imported.Id == a.Id && imported.Server == "CN" && imported.GamePath == a.GamePath, "import preserves selected target"); Assert(!imported.AutoUpdate && imported.Preset.Components == "camera", "import pauses and applies choices"); Storage.Save(a); Assert(File.Exists(Path.Combine(Storage.Root, "profiles", "client-a.json.bak")), "atomic backup"); });
+            Test("removed clients stay removed without changing games, other profiles or preferences", () =>
+            {
+                string previous = Storage.Root;
+                Storage.Root = Path.Combine(root,"client-removal");
+                try
+                {
+                    var defaults = Storage.LoadAll(); Assert(defaults.Count == 2,"First run should offer both clients");
+                    string game = Path.Combine(root,"preserved-game-file"); File.WriteAllText(game,"game and mods stay here");
+                    foreach (var settings in defaults) { settings.GamePath = game; Storage.Save(settings); }
+                    string other = File.ReadAllText(Path.Combine(Storage.Root,"profiles","intl.json"));
+                    string preferences = Path.Combine(Storage.Root,"ui.json"); File.WriteAllText(preferences,"preserve preferences");
+                    Throws(()=>Storage.DeleteClient("../ui"),"Deletion must reject paths outside the profiles directory");
+                    Storage.DeleteClient("cn");
+                    Assert(Storage.LoadAll().Single().Id == "intl","Default CN client was recreated");
+                    Assert(File.ReadAllText(Path.Combine(Storage.Root,"profiles","intl.json")) == other,"Other profile was changed");
+                    Storage.DeleteClient("intl");
+                    Assert(Storage.LoadAll().Count == 0 && Storage.LoadAll().Count == 0,"Last deletion must remain empty on reload");
+                    Assert(File.ReadAllText(game) == "game and mods stay here" && File.ReadAllText(preferences) == "preserve preferences","Deletion touched a game file or UI preference");
+                    Storage.Save(new Settings {Id="new-client",Name="重新添加的客户端"});
+                    Assert(Storage.LoadAll().Single().Id == "new-client","New client could not be added after deleting all clients");
+                }
+                finally { Storage.Root = previous; }
+            });
             Test("version mismatch, absent install, newer local and missing active mods", () => { var r = Release.Parse(Html(Hash(Exe()))); Assert(UpdatePolicy.Decide(Local("15.9.0"), r) == UpdateDecision.Incompatible, "mismatch"); Assert(UpdatePolicy.Decide(Local("", null), r) == UpdateDecision.UnknownGame, "unknown game"); Assert(UpdatePolicy.Decide(Local("15.10.0", null), r) == UpdateDecision.Install, "missing"); Assert(UpdatePolicy.Decide(Local("15.10.0", "15.10.0_09"), r) == UpdateDecision.NewerInstalled, "never downgrade"); Assert(UpdatePolicy.Decide(Local("15.10.0", "15.10.0_08"), r) == UpdateDecision.Current, "latest"); var empty = Local("15.10.0", "15.10.0_08"); empty.HasActiveMods = false; Assert(UpdatePolicy.Decide(empty, r) == UpdateDecision.Install, "missing mods repair"); });
             Test("legacy and modern Aslain layouts and active build ignore predownloaded client", () => {
                 string game = Path.Combine(root, "layout-game"); Directory.CreateDirectory(Path.Combine(game, "bin", "100", "res_mods")); Directory.CreateDirectory(Path.Combine(game, "bin", "999")); File.WriteAllText(Path.Combine(game, "WorldOfWarships.exe"), "fixture");
