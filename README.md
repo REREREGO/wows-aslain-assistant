@@ -2,6 +2,8 @@
 
 <img src="assets/logo/lan-blue-shield.png" width="96" alt="懒字蓝盾图标">
 
+> made with GPT 6 Astra
+
 因为懒得手动更新阿斯兰，写了这个助手。
 
 第一次选好插件，以后让它定期检查、下载并安装更新。国服、外服都能用，也可以添加多个游戏目录，每套客户端的插件配置分别保存。
