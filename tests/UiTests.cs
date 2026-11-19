@@ -44,6 +44,19 @@ namespace AslainAssistant
             }
             return null;
         }
+        static Bitmap NavigationImage(AntdUI.Tabs tabs)
+        {
+            var image=new Bitmap(tabs.Width,tabs.Pages[tabs.SelectedIndex].Top);
+            tabs.DrawToBitmap(image,new Rectangle(Point.Empty,image.Size));
+            return image;
+        }
+        static bool SamePixels(Bitmap first,Bitmap second)
+        {
+            if(first.Size!=second.Size)return false;
+            for(int y=0;y<first.Height;y++)for(int x=0;x<first.Width;x++)
+                if(first.GetPixel(x,y)!=second.GetPixel(x,y))return false;
+            return true;
+        }
         static void Run(Dashboard form)
         {
             var pages = (AntdUI.Tabs)Field(form,"pages");
@@ -52,6 +65,61 @@ namespace AslainAssistant
             first.Game = new GameState { GameVersion = "15.10.0", HasInstallation = true, Installed = PackVersion.Parse("15.10.0_08") };
             first.Release = new Release { Version = PackVersion.Parse("15.10.0_09") };
             Call(form,"RefreshUi");
+            Test("settings and presets repaint the full viewport when scrolled in both themes",()=>
+            {
+                var theme=(AntdUI.Segmented)Field(form,"themeMode");
+                int previousTheme=theme.SelectIndex,previousPage=pages.SelectedIndex; Size previousSize=form.Size;
+                bool animation=AntdUI.Config.Animation;AntdUI.Config.Animation=false;
+                try
+                {
+                    form.Size=form.MinimumSize;
+                    foreach(int mode in new[]{0,1})
+                    {
+                        theme.SelectIndex=mode;
+                        foreach(int index in new[]{1,2})
+                        {
+                            pages.SelectedIndex=index; UiTheme.LayoutVisible(pages); Application.DoEvents();
+                            var viewport=pages.Pages[index].Controls.OfType<AntdUI.StackPanel>().Single();
+                            Assert(viewport.YScroll!=null && viewport.YScroll.Visible,"Test page must overflow");
+                            int invalidations=0,navigationInvalidations=0;
+                            InvalidateEventHandler painted=(sender,e)=>{if(e.InvalidRect.Contains(viewport.ClientRectangle))invalidations++;};
+                            InvalidateEventHandler navigationPainted=(sender,e)=>{if(e.InvalidRect.Contains(pages.ClientRectangle))navigationInvalidations++;};
+                            viewport.Invalidated+=painted;
+                            pages.Invalidated+=navigationPainted;
+                            try
+                            {
+                                using(var navigation=NavigationImage(pages))
+                                foreach(int delta in new[]{-120,-360,120,360,-240,240})
+                                {
+                                    int before=viewport.YScroll.Value; invalidations=0; navigationInvalidations=0;
+                                    var wheel=new HandledMouseEventArgs(MouseButtons.None,0,10,10,delta);
+                                    typeof(Control).GetMethod("OnMouseWheel",Flags).Invoke(viewport.Controls[0].Parent,new object[]{wheel});
+                                    if(viewport.YScroll.Value!=before)
+                                    {
+                                        Assert(invalidations>0,"Scroll left old pixels without a full viewport repaint: page "+index+", theme "+mode);
+                                        Assert(navigationInvalidations>0,"Scroll erased the navigation without repainting it");
+                                    }
+                                    Application.DoEvents();
+                                    using(var after=NavigationImage(pages))
+                                    {
+                                        if(!SamePixels(navigation,after))
+                                        {
+                                            navigation.Save(Path.Combine(Storage.Root,"navigation-before.png"));after.Save(Path.Combine(Storage.Root,"navigation-after.png"));
+                                            Assert(false,"Scrolling changed the tab navigation pixels; evidence: "+Storage.Root);
+                                        }
+                                    }
+                                    var visibleCards=viewport.Controls.Cast<Control>().Where(c=>c.Visible).OrderBy(c=>c.Top).ToArray();
+                                    for(int i=1;i<visibleCards.Length;i++) Assert(visibleCards[i-1].Bottom<visibleCards[i].Top,"Cards overlap after scrolling");
+                                }
+                                Assert(viewport.BackColor.A==255 && viewport.BackColor==UiTheme.Background,"Scroll viewport must repaint with the current theme background");
+                                Assert(viewport.Controls[0].Parent.BackColor==UiTheme.Background,"Inner scroll surface lost the theme background");
+                            }
+                            finally {viewport.Invalidated-=painted;pages.Invalidated-=navigationPainted;}
+                        }
+                    }
+                }
+                finally {theme.SelectIndex=previousTheme;form.Size=previousSize;pages.SelectedIndex=previousPage;UiTheme.LayoutVisible(pages);AntdUI.Config.Animation=animation;}
+            });
             Test("assistant version is visible and self-check controls fit in both themes",()=>
             {
                 var self=(SelfUpdateEngine)Field(form,"selfUpdate");

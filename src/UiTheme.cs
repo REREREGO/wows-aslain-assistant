@@ -19,6 +19,7 @@ namespace AslainAssistant
         static readonly Dictionary<Control,Action> themeBindings = new Dictionary<Control,Action>();
         public static void Initialize(bool dark = false)
         {
+            AntdUI.Config.Animation = false;
             AntdUI.Config.Mode = dark ? AntdUI.TMode.Dark : AntdUI.TMode.Light;
             AntdUI.Config.TextRenderingHighQuality = true;
             AntdUI.Config.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
@@ -65,6 +66,23 @@ namespace AslainAssistant
             // AntdUI layout follows WinForms z-order, from last child to first.
             for (int i = children.Length - 1; i >= 0; i--) { children[i].Margin = Padding.Empty; panel.Controls.Add(children[i]); }
             return panel;
+        }
+        public static void ScrollPage(AntdUI.StackPanel panel, AntdUI.Tabs tabs)
+        {
+            // A moving viewport must paint its own background. Transparent nested
+            // containers otherwise ask Tabs to repaint while child windows move.
+            panel.AutoContainerBgTransparent = false;
+            Bind(panel,()=>{panel.BackColor = Background; panel.Back = Background;});
+            panel.AutoScroll = true;
+            // StackPanel moves existing child windows on ValueChanged. Repaint the
+            // entire subtree after its layout, including newly exposed card text.
+            panel.YScroll.ValueChanged += (s,e)=>
+            {
+                panel.Invalidate(true);
+                // Child-window moves can also invalidate the tab strip's backing
+                // pixels. Repaint the navigation without relaying out the pages.
+                tabs.Refresh();
+            };
         }
         public static AntdUI.FlowPanel Actions(params Control[] children)
         {

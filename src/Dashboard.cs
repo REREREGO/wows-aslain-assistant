@@ -12,6 +12,17 @@ namespace AslainAssistant
 {
     public sealed partial class Dashboard : AntdUI.Window
     {
+        protected override CreateParams CreateParams
+        {
+            get
+            {
+                var parameters=base.CreateParams;
+                // Compose AntdUI's nested child windows in one frame while cards
+                // move, instead of showing partially repainted transparent layers.
+                parameters.ExStyle |= 0x02000000; // WS_EX_COMPOSITED
+                return parameters;
+            }
+        }
         // Login/update launches must not steal focus from a running game. An
         // explicit user activation still calls Activate() in Reveal().
         protected override bool ShowWithoutActivation { get { return background; } }

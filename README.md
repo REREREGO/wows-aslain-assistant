@@ -6,7 +6,7 @@
 
 选一次插件，以后让它定期检查、下载并安装。国服、外服分开管理；也能直接导入群友的配置，省得对着截图挨个勾选。
 
-**[下载 1.0.2 安装包](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.2/AslainAssistant.Setup.1.0.2.exe)** · [更新说明](https://github.com/REREREGO/wows-aslain-assistant/releases/tag/v1.0.2) · [反馈问题](https://github.com/REREREGO/wows-aslain-assistant/issues)
+**[下载 1.0.3 安装包](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.3/AslainAssistant.Setup.1.0.3.exe)** · [更新说明](https://github.com/REREREGO/wows-aslain-assistant/releases/tag/v1.0.3) · [反馈问题](https://github.com/REREREGO/wows-aslain-assistant/issues)
 
 适用于 Windows，需要 .NET Framework 4.8。更新的是阿斯兰**经典模组包**。
 
@@ -46,11 +46,40 @@
 - **模组包比游戏版本新**：先下载，等游戏更新到对应版本再安装。
 - **网络断了**：保留现有模组和配置；开启自动更新时，约 15 分钟后重试。
 
-1.0.1 支持国内查询和下载：版本信息从 [Gitee](https://gitee.com/rererergo/aslain_versions) 读取，安装包从 [GitCode](https://gitcode.com/REREREGO/aslain_versions/releases) 下载，失败时再尝试官网。
+## 国内、国外怎么查版本和下载
 
-**客户端设置 → 国内镜像** 还有蓝奏云备用入口，提取码 `6fpw`。手动下载后，点 **导入已下载的安装包**，校验通过就能用于安装。
+下面两条路线用于更新**阿斯兰模组包**。助手自身的安装包和版本自检仍走本仓库的 [GitHub 发行版](https://github.com/REREREGO/wows-aslain-assistant/releases)。
+
+| 路线 | 在哪里查版本 | 从哪里下载安装包 |
+| --- | --- | --- |
+| **国内镜像（默认）** | [Gitee 版本清单仓库](https://gitee.com/rererergo/aslain_versions)，依次尝试原始文件和公开 API | [GitCode 发行版](https://gitcode.com/REREREGO/aslain_versions/releases)，提供官网原始 `.exe` |
+| **国外官网直连** | [Aslain 经典版发布帖](https://aslain.com/index.php?/topic/2020-download-%E2%98%85-world-of-warships-%E2%98%85-modpack/) | 发布帖中的安装包，助手从 `filez.aslain.com` 下载 |
+
+所有地区默认都按“国内优先、官网备用”的顺序访问：国内清单不可用时改查官网；GitCode 下载失败时尝试官网下载安装包。国内清单读取成功，就以镜像已同步的版本为准。Gitee 的两个查询入口属于同一个平台。
+
+海外用户或能稳定访问官网的用户，可以到 **客户端设置 → 国内镜像 → 版本源设置**，清空地址并保存，之后直接查官网、从官网下载。这项来源设置对所有客户端生效。
+
+手工下载备用：[蓝奏云目录](https://wwbcm.lanzouq.com/b01i60xlde)，提取码 `6fpw`；软件里的 **客户端设置 → 国内镜像 → 蓝奏云下载** 也能打开。先点 **仅检查版本**，再下载相同版本的 `.exe`，点 **导入已下载的安装包**，校验通过就能用于安装。蓝奏云由维护者手工补包，是否已有所需版本以目录为准。
 
 阿斯兰安装器中的部分插件仍需连接它自己的下载服务器，所以拿到安装包不代表所有插件都能离线安装。
+
+### 预计最多要等多久
+
+从官网发布**与你的游戏版本匹配**的安装包开始，按默认每小时检查、助手持续在线且空闲、云端任务按时启动并一次同步成功估算：
+
+| 路线 | 安装包在该来源可用 | 助手自动发现新版的保守预估 |
+| --- | --- | --- |
+| 官网直连 | 无需等待镜像同步 | 约 **1 小时**，另加查询耗时 |
+| 国内镜像 | 约 **1 小时 35 分钟以内** | 约 **2 小时 35 分钟**，另加查询耗时 |
+
+国内同步任务设为每小时第 17 分钟检查官网，单次任务限时 35 分钟，因此按“等下一轮最多 60 分钟 + 同步预留 35 分钟 + 助手默认检查间隔 60 分钟”计算。若你改了检查间隔，就把最后的 60 分钟换成自己的设置。点 **仅检查版本** 或 **使用历史配置更新** 可以立即检查，省去本地等下一轮的时间。
+
+**这是正常运行时的预估，不是保证的最高延迟。** [GitHub 定时任务可能排队延迟或被跳过](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)，同步失败还需等后续重试；断网、助手退出、其他客户端正在安装等情况也会延后。上表不包含下载安装时间，游戏运行中仍会等待你退出后再安装。
+
+单次查询和下载遇到卡顿时，助手按以下时间换源或报错：
+
+- **查版本**：每个国内入口限时 8 秒，官网限时 45 秒。默认两个国内入口全部超时、再尝试官网，按超时设置合计约 **61 秒**；仅官网约 **45 秒**。这与上面的新版同步延迟是两回事。
+- **下载安装包**：每个来源连接等待 15 秒，连续 30 秒收不到数据会中止该次尝试，单个来源总时限 30 分钟；失败后尝试下一来源。下载速度取决于网络，这些是失败退出的时限，不代表一定能在时限内下载完成。
 
 ## 助手自己的版本
 
@@ -60,7 +89,7 @@
 
 左下角也可以切换深浅主题，重启后会记住。
 
-![1.0.2 深色界面](docs/images/dashboard-dark.jpg)
+![1.0.3 深色界面](docs/images/dashboard-dark.jpg)
 
 ## 装完发现少了插件
 
@@ -101,7 +130,8 @@ made with GPT 6 Astra。
 
 | 版本 | 主要变化 | 安装包 |
 | --- | --- | --- |
-| **1.0.2（最新）** | 修复助手下载卡住时取消不生效，统一下载超时处理 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.2/AslainAssistant.Setup.1.0.2.exe) |
+| **1.0.3（最新）** | 修复客户端设置、插件配置滚动残影 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.3/AslainAssistant.Setup.1.0.3.exe) |
+| 1.0.2 | 修复助手下载卡住时取消不生效，统一下载超时处理 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.2/AslainAssistant.Setup.1.0.2.exe) |
 | 1.0.1 | 国内版本源与下载镜像、助手版本自检 | [下载](https://github.com/REREREGO/wows-aslain-assistant/releases/download/v1.0.1/AslainAssistant.Setup.1.0.1.exe) |
 
 [查看全部发行记录](https://github.com/REREREGO/wows-aslain-assistant/releases)

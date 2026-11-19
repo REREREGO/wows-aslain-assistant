@@ -138,7 +138,7 @@ namespace AslainAssistant
         {
             var page = new Ant.TabPage { Text = name, IconSvg = icon, Padding = new Padding(0,16,0,0), BackColor = UiTheme.Background };
             UiTheme.Bind(page,()=>page.BackColor = UiTheme.Background);
-            var column = content as Ant.StackPanel; if (column != null) column.AutoScroll = true;
+            var column = content as Ant.StackPanel; if (column != null) UiTheme.ScrollPage(column,pages);
             page.Controls.Add(content); pages.Pages.Add(page); return page;
         }
         void BuildUi()
